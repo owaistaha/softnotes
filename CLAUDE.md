@@ -145,6 +145,8 @@ Reference/                      reference-walkthrough.mov (local only, git-ignor
 App/
   SoftNotesApp.swift            @main; RootContainerView; .preferredColorScheme(.light);
                                 DEBUG `-reduceMotion` override
+  MainThreadWatchdog.swift      DEBUG: main-queue pings every 20 ms, stalls > 500 ms logged
+                                (os_log com.owaistaha.softnotes/watchdog), in-progress reports
   RootContainerView.swift       App shell (see "Architecture"); `save(_:)` = THE fold timeline;
                                 DEBUG `-demoFold`
 DesignSystem/
@@ -235,13 +237,30 @@ Key invariants:
   Probe next time with `scripts/video-frames.sh` on the close window.
 - `ComposeFlowView` stays in the hierarchy permanently (`isPresented`), and its
   Next button lives in a layer *outside* the blur-fading content (nav + step).
-- **Keyboard on iOS 26:** SwiftUI's keyboard safe area stops ≈44pt *inside*
-  the keyboard's visible top (probe: UIKit frame y = 539, SwiftUI safe edge
-  583 on iPhone 17 Pro). `keyboardOverlapPadding()` on `ComposeFlowView` pads
-  by the real overlap from `keyboardWillChangeFrame`, **capped at 80pt**:
-  UIKit's notification lands ≈0.5 s before SwiftUI applies its keyboard
-  inset, and correcting by the full difference then squashed the nav and made
-  the title overshoot. Don't remove the cap.
+- **Keyboard (rewritten in 6B — this was the main-thread hang):** SwiftUI's
+  keyboard safe area drives the avoidance; it is the only source that moves
+  in step with the keys (the iOS 26 keyboard is out of process and
+  `keyboardWillChangeFrame` arrives ≈100–150 ms into its rise — padding from
+  UIKit alone lagged the keys on video). `keyboardOverlapPadding()` wraps
+  compose in a `GeometryReader` whose frame IS the proposal, reads the edge
+  from the proxy while computing the padding (**no state written during
+  layout**), and pins the content to exactly that frame, bottom-aligned, so
+  overflow goes up and never resizes anything. The Step 4 version stored its
+  own bottom edge from a GeometryReader `onChange`; with the keyboard up the
+  write step is taller than the space left, so the padding made the view
+  overflow and re-centre, the edge moved by half the padding, and the 80pt
+  cap turned that into an endless cycle (587 → 611 → 623 → 0 → 587…) inside
+  one `render()` — the "Timed out while evaluating UI query" hang. The same
+  overflow enlarged the root ZStack, and THAT was the "44pt lip" Step 4
+  corrected: with it fixed, SwiftUI's keyboard edge equals UIKit's top on
+  iOS 26.5 (539 = 539) and 17.5 (482 = 482). The correction stays, gated by
+  the measured overlap (0 on both), capped at 80pt.
+- **Rules that came out of it:** never write state from a geometry read
+  without an equality check (and rounding); never measure a view whose size
+  can depend on what you set from the measurement — measure something whose
+  size is fixed by its parent (a `GeometryReader`, a `.frame(maxWidth:
+  .infinity, maxHeight: .infinity)` that can't be exceeded), or read the
+  proxy in the body instead of storing it.
 - **Text-field caps:** clamp in the binding's setter *and* re-set one tick
   later (`WriteStep.textBinding`); clamping in `onChange` or only in the
   setter leaves the field showing too much. Verify with one-key-at-a-time
@@ -332,6 +351,23 @@ Key invariants:
 - **Recent holds the new row** (`heldNoteID`) until `.rowEntry` — the
   reference shows the two old rows through the zoom-out and slides the new
   one in ≈1.8 s after the landing.
+- **Folder drag on short screens (6B):** Home measures content vs viewport;
+  when it scrolls (iPhone SE with three Recent rows) `FolderCard` gets
+  `sharesDragsWithScroll`: the tilt drag starts after 20pt (at 4pt it beat
+  the scroll view's pan and Home couldn't be scrolled from the folder) and a
+  drag whose first movement is vertical belongs to the scroll view (no tilt).
+  Where Home fits, the tilt is unchanged (4pt, any direction). A
+  long-press-then-drag gesture also swallowed the scroll (tested).
+- **Reduce Motion (6B):** fold → cross-fade + count; picker ring fades per
+  cell (no glide), preview swaps with a fade; folder receive bounce off,
+  chips fade in/out; tab pill fades; idle floats off; tilt stays.
+- **VoiceOver (6B):** rows read "<title>, <relative time>" (one element);
+  picker cells use spoken names (`NoteIcon.accessibilityName`); the note
+  field is "Note" with a hint; filing posts one announcement "Note saved.
+  N notes." (`announceFiled()` — landing, Reduce Motion, fast-forward).
+  App text does NOT follow Dynamic Type: every font is a fixed
+  `.system(size:)` token (checked at default / XXL / AX5 — nothing clips
+  because nothing grows). Scaling is an open design decision.
 - **Backgrounding mid-save fast-forwards** (`finishSaveNow()` on
   `scenePhase == .background`): the task is cancelled, the note is added once
   if it hadn't landed, and everything is put in its end state without
@@ -461,6 +497,7 @@ Measured from 4.69 s (rest, before the tap) and 6.95 s (typed), 393pt phone.
 - Keyboard up: **status bar hides, nav slides up and fades**, the layout flips
   from top- to bottom-aligned so title + card ride up on the keyboard; card
   poses to **×1.2 (anchored bottom), −1.5°** (not 0°). Next sits ≈55pt
+  (6B: measured 55.5 after the keyboard fix; gap 17pt while typing)
   (centre) above the keys' visible top, card ≈17pt above Next. The reference's
   keyboard is 412pt tall (ours 334pt), so there the title is pushed off the
   top; ours stays visible.
@@ -573,18 +610,12 @@ early count roll, toggle timing, two-step card rise; title width, glyph
 size/weight, toggle label + rim, folder band, picker title offset, picker
 glass. Not changed (measured, see log): tab bar height, Next disc size.
 
-**Step 6B — Robustness** (next). Includes the write-step stall (see
-"Test & screenshot loop").
+**Step 6B — Robustness.** DONE: main-thread hang (keyboard layout loop)
+found and fixed with a watchdog harness; keyboard measured on iOS 17.5 and
+26.5; SE scroll vs tilt; Reduce Motion for the rest; VoiceOver pass.
 
-**Step 6 (remaining) — Polish pass.** Frame-by-frame comparison against the reference
-for every section; tune `Theme.Motion` and geometry only through tokens.
-Reduce Motion path for the whole fold (see Hard rules). VoiceOver pass.
-**SE-size scroll vs tilt:** on iPhone SE (667pt tall) Home is taller than
-the screen, so the `ScrollView` scrolls and the folder's tilt
-`simultaneousGesture` can fight it (confirmed layout at Step 1; the drag
-itself is untested because simctl can't inject touches). Test on an SE
-simulator by hand and resolve (e.g. only tilt on horizontal-dominant drags,
-or a high-priority gesture on the folder).
+**Next:** real-iPhone testing (the human). Open: Dynamic Type (fixed fonts),
+the ≈650 ms stall on the very first keyboard after a fresh install.
 
 **Later / explicitly out of scope until asked:** note detail/edit screen,
 search, "See all" screen, persistence (SwiftData or a JSON file), dark mode,
@@ -657,18 +688,25 @@ at most one frame.
 
 **Re-runs:** `scripts/ui-shots.sh` re-runs every failed test ONCE and prints
 `RETRY: … passed on the second run (flaky)` or `… failed again`; the run
-fails only if a retry fails. **Known stall — the APP spins (corrected in
-6A):** "Timed out while evaluating UI query" on the write step (keyboard up)
-— hit in Step 4, in about half the 5B `VIDEO=1` runs, and in 4 of 16 tests
-of the 6A suite (all passed on retry). A `sample` of the stuck app (6A,
-testWriteAndSave) showed the main thread 100% busy for the whole 3 s inside
-ONE scene safe-area update (`_UISceneSafeAreaClientComponent` →
-`layoutBelowIfNeeded` → SwiftUI render re-flushing transactions), with
-`KeyboardOverlapPadding` (GeometryReader → `bottomEdge` state) and the
-container's `onGeometryChange` reads in the stack: a layout feedback loop.
-The 5B note "app idle when sampled" came from a manual run that didn't hit
-it. Suspects for 6B: state written from geometry during layout in
-`keyboardOverlapPadding`, `statusBarHidden` toggling with `isEditingText`.
+fails only if a retry fails. **The write-step "Timed out while evaluating UI query"
+was an app hang, fixed in 6B** (see Architecture → Keyboard): before, 5 of
+21 write-step runs hung > 32 s; after, 0 in 60+ runs and 22/22 of the suite
+on the first attempt. If it ever comes back, reproduce with the tools below
+rather than retrying.
+
+**Stall tools (6B):** every UI test launches with `-watchdog` (DEBUG main-
+thread watchdog → os_log). `scripts/stall-stress.sh ITER label tests…`
+repeats tests with `-test-iterations`, streams the watchdog log and runs
+`sample` on the app when a stall passes 2 s (hang_*.txt in
+`$TMPDIR/softnotes-stress`). `-keyboardCycles N` (DEBUG) makes the app
+focus/dismiss the write card N times by itself and publish a summary
+(`keyboardCycleReport`), plus a probe log of SwiftUI's keyboard edge vs
+UIKit's; `testKeyboardCyclesNoStalls` runs 20 cycles under XCUITest and
+asserts no stall > 500 ms. Don't `sample` during a measurement you trust —
+attaching pauses the app (it registers as a stall).
+**Other runtimes:** `SIM_NAME="iPhone 15 Pro" SIM_OS=17.5 scripts/ui-shots.sh …`
+(a bare name resolves to the latest OS only);
+`SIM_NAME="iPhone SE (3rd generation)" SIM_OS=26.5` for the SE tests.
 Also: Spotlight indexing of the `build/` videos loaded the host (mds_stores
 ≈280% CPU) and made the recorder drop whole phases — `build/` and
 `build/shots/` carry `.metadata_never_index`.
@@ -694,7 +732,10 @@ Launch arguments (DEBUG only):
   `testReduceMotionSave`.
 - `-reduceMotion` — forces the Reduce Motion paths (sets SwiftUI's
   `_accessibilityReduceMotion`; UI tests can't flip the system setting).
-  `testReduceMotionSave` uses it with `-demoFold`.
+  `testReduceMotionSave` uses it with `-demoFold`; `testReduceMotionFullFlow`
+  runs tab switch → picker → write → save with it.
+- `-watchdog` — main-thread stall watchdog for the whole run (all UI tests).
+- `-keyboardCycles N` — keyboard stress harness (see Stall tools).
 
 ---
 
@@ -781,11 +822,12 @@ with simple fades.
 - [x] Step 5A — 05 Save + first half of 06 Fold (timeline, split card, icon lift, -demoFold, Reduce Motion)
 - [x] Step 5B — rest of 06 Fold (push, drop into the folder) + 07 file away + hand-off
 - [x] Step 6A — Polish: save-sequence fixes (empty slot, count/toggle timing, two-step rise) + visual polish
-- [ ] Step 6B — Robustness (write-step layout stall, …)
-- [ ] Step 6 (rest) — Reduce Motion, VoiceOver, SE scroll vs tilt
+- [x] Step 6B — Robustness: main-thread hang fixed, iOS 17.5 check, SE scroll vs tilt, Reduce Motion, VoiceOver
+- [ ] Real-iPhone test (human); open: Dynamic Type, first-keyboard cold stall
 
 Log:
 - (add one line per session: date, what changed, what's still off vs the reference)
+- 2026-10-01 — Step 6B: HANG — watchdog + `-keyboardCycles` harness + stall-stress with auto-sample; app-driven cycles alone never stalled, the write-step tests hung 5/21 runs (> 32 s); samples put `KeyboardOverlapPadding`'s GeometryReader onChange in the loop, debug prints showed the cycle 587 → 611 → 623 → 0 (content overflow + cap). First fix (UIKit-only padding, compose ignores the keyboard) stopped the hang but lagged the keys ≈150 ms on video → final: SwiftUI safe area for timing, GeometryReader-pinned content, edge read in body, no layout state. After: 15/15 write-step runs + 60 keyboard cycles under XCUITest with 0 stalls > 500 ms (worst ping 222–433 ms); full suite 22/22 first attempt, 0 retries. The Step 4 "44pt lip" was the overflow: SwiftUI edge = UIKit top on 26.5 (539) and 17.5 (482/516) → correction measured 0 on both, kept gated. Typing Next gap 22 → 17 (centre 55.5pt above keys, ref ≈55; was 48.5). iOS 17.5 (iPhone 15 Pro): write step correct, 20 cycles 0 stalls. SE: folder drag scrolled 0pt vs 103pt from "Recent" → tilt starts at 20pt + vertical drags go to the scroll view, only when Home scrolls (now 103 vs 103); 17 Pro tilt identical old vs new on video. Reduce Motion: picker ring/preview fade, bounce off, chips fade, tab pill fades, new full-flow test. VoiceOver: row labels, spoken icon names, note field label/hint, tag hint, "Note saved. N notes." announcement, testAccessibilityLabels. Open: no Dynamic Type scaling (fixed fonts); a ≈650 ms main-thread stall on the first keyboard after a fresh install (1 of 5 launches, none after; debug build); 4 launch-time stalls 533–826 ms seen in stress runs.
 - 2026-09-30 — Step 6A: save — chips vacate the centre slot at `.folded` (push shows 2 chips, nothing crosses the landing chip; shuffling at push start showed the leaving chip); count leads the store from 3080 (roll ≈3033–3167 vs ref 3040–3140), bounce stays on the landing (landing point is for the folder at rest); drop 3040 → 2990, close = landing + 70 (toggle ≈3480 vs 3500); card rises in two steps (`pushStep` 2510, 82%/18%; mean error 9.2 → 4.1pt) — kept. Hand-off re-tracked: swap-frame diff 0.04–0.07 (smallest in window), blue pixels steady. Polish (measured at the reference's resolution): title 34 → 36 (88.0×24.3 → 93.0×25.7 vs 94.0×25.6); glyph 0.32 regular → 0.38 semibold (star radius 5.30 → 5.96 vs 5.96, ink 46 → 80 vs 78); toggle label 17 medium → 19 semibold (44.0 → 50.0pt vs 50.2) + grey rim (edge blue 247 → 238 vs 241); folder front band (profile within 1 level incl. step); picker title +1.5pt (70.6 → 72.3 vs 72.1; grid unchanged 304.6 vs 304.4); picker glass `.vivid` (sat 53.2 → 57.8 vs 58.8). NOT changed: tab bar "4pt higher" — ours already sits 38pt above the screen bottom vs ≈35 in the ref; Next "64pt" — ref Next and FAB both measure 61.3–62.9pt (ours 62). Suite: 12/16 first attempt, 4 write-step tests hit the UI-query stall and passed on retry; sampling showed the APP spinning in a safe-area layout loop (not XCTest) → 6B. Still off: ref folder dips with the count roll, ours bounces at the landing (≈150 ms later); drop ≈60 ms late on the final run (host jitter ±1–4 frames); new row ≈60 ms late; ref's lowest ≈20pt of the front panel 2–4 levels darker; ref toggle ink more muted, knob shadow stronger.
 - 2026-09-30 — Step 5B: camera measured — the reference has a presentation zoom (bezel ×1.14, not built) AND an in-app zoom of Home on the folder (×1.30, not ×1.5). Built push (Home rises from below, zoomed, folder open, old count/chips), drop behind the front panel (FolderShape cutout, shrink 0.86, blur 8), icon → chip hand-off as one object (landing on the drop's completion, `.identity` chip, shape morph, newest chip on top), count roll + bounce, toggle, zoom-out with header/Recent/tab bar, held row entry, background fast-forward; the 5A `file()` bridge is gone. Final video vs reference (ms after tap): Home first visible 2000 vs 2017; card rise 1966 vs 1967; drop 3000 vs 2950; icon lands ≈3250 vs ≈3190; toggle ≈3616 vs ≈3500; Recent/+ back ≈4083–4216 vs ≈4167–4217; new row ≈5050 vs 4970. Found + fixed on video: Canvas mask stalled the first frames ≈0.5 s; screen size came back inset (zoom 50pt high); new chip hidden under the old centre chip for 3 frames; Home's chips visible at push start (rise 308 → 500). Full suite 16/16 first attempt, but the simulator host stalled for minutes in several tests (even a unit test took 459 s). Still off: reference centre slot is empty during the push (ours shows the old centre chip, which shuffles out by spec); count roll ≈100 ms after the reference's (ours waits for the icon); toggle ≈100 ms late; the reference card rises in two steps, ours in one; the + fades in place (ref rides the zoom-out up); flap "ears" still shorter.
 - 2026-09-30 — Step 5A: studied 7.2–11.2 s at 30/60 fps + a per-frame metric pass (the save starts at 7.383 s, not 8.4). FoldPhase/FoldTimeline (one timeline in `RootContainerView.save`), FoldingCardView (two clipped halves, flap toward the viewer, 20% shade, tucks behind past 90°), FoldStage (Animatable overlay: card flight, ONE travelling icon, fold), `.review` ×1.025, `-demoFold`, `-reduceMotion`, Reduce Motion cross-fade, SoftNotesTests pixel diffs (split at rest: max diff 1; hand-off: max 3 outside the icon). Video vs reference (ms after the tap, visible): keyboard gone 233 vs ≈250; lift 433→≈610 vs 467→650; nav/title fade 950→1017 vs 934→1017; Next gone 1017–1067 vs 1050; fold start 1433 vs 1433, edge-on 8 frames in both (per-frame angles within ~3°); flap edges visible ≈100 ms vs ≈130–180. Found + fixed on video: a ghost write card fading behind the flight (opacity animated by the tap's spring). Still off: ref flap edges linger longer and it keeps faint "ears" at the fold-line corners into 06; ref lifted icon sits ≈6pt left of centre (ours centred); ref presentation camera zooms (not app); our settle occasionally drops frames in the simulator recorder; one full-suite run had the pre-existing "Timed out while evaluating UI query" flake in `leaveTextFieldIfFocused` (passes alone).

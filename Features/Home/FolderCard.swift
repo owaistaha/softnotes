@@ -199,11 +199,8 @@ struct FolderCard: View {
         return ZStack(alignment: .bottom) {
             SoftSurface(
                 shape,
-                fill: LinearGradient(
-                    colors: [.white, Color(hex: 0xF5F5F6)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                ),
+                fill: LinearGradient(gradient: Theme.Palette.folderFront,
+                                     startPoint: .top, endPoint: .bottom),
                 elevation: .folder
             )
 

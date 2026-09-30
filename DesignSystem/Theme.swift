@@ -26,6 +26,16 @@ enum Theme {
         /// Tag chip on the paper card, and the card's faint ruled lines.
         static let paperTag      = Color(hex: 0xF5EFE5)
         static let paperRule     = Color.black.opacity(0.06)
+        /// Folder front panel, top → bottom (fractions of the 174pt panel, tab
+        /// included). Measured down the panel on the 14.0 s frame: ≈253 flat
+        /// for ≈39pt below the body top, a soft ≈3-level step (the faint
+        /// band), then 249 → 245 at the bottom. Was a plain white → #F5F5F6.
+        static let folderFront = Gradient(stops: [
+            .init(color: Color(hex: 0xFEFEFE), location: 0),
+            .init(color: Color(hex: 0xFCFCFC), location: 0.36),
+            .init(color: Color(hex: 0xF9F9F9), location: 0.385),
+            .init(color: Color(hex: 0xF5F5F6), location: 1),
+        ])
         /// Soft grey rim just inside the folder toggle's track (reference: the
         /// outer ≈2pt of the lavender track read grey, blue 255 → ≈240).
         static let toggleRim     = Color(hex: 0xDCDCE0, opacity: 0.5)

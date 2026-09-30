@@ -9,6 +9,10 @@ set -eo pipefail
 cd "$(dirname "$0")/.."
 
 SIM_NAME=${SIM_NAME:-"iPhone 17 Pro"}
+# SIM_OS: pick the runtime when the name exists on several (e.g. SIM_OS=17.5
+# for "iPhone 15 Pro" or "iPhone SE (3rd generation)"); default = latest.
+SIM_OS=${SIM_OS:-}
+DEST="platform=iOS Simulator,name=$SIM_NAME${SIM_OS:+,OS=$SIM_OS}"
 WORK=${TMPDIR:-/tmp}/softnotes-uitests
 OUT=build/shots/ui
 RESULT=$WORK/result.xcresult
@@ -21,7 +25,7 @@ rm -rf "$RESULT" "$OUT"; mkdir -p "$WORK" "$OUT"
 # Show the *software* keyboard (the write step's layout depends on it): turn off
 # the Mac-keyboard passthrough globally and for this device. Needs a sim reboot
 # to take effect if Simulator.app already connected a hardware keyboard.
-UDID=$(xcrun simctl list devices available | grep -m1 "    $SIM_NAME (" | grep -oE '[0-9A-F-]{36}')
+UDID=$(xcrun simctl list devices available | awk -v os="-- iOS ${SIM_OS:-}" '/^-- /{sec=$0} index($0, "    '"$SIM_NAME"' (") && (os=="-- iOS " || index(sec, os)==1) {print; exit}' | grep -oE '[0-9A-F-]{36}')
 defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool false
 /usr/libexec/PlistBuddy -c "Delete :DevicePreferences:$UDID:ConnectHardwareKeyboard" \
   ~/Library/Preferences/com.apple.iphonesimulator.plist >/dev/null 2>&1 || true
@@ -33,9 +37,9 @@ xcodegen generate -q
 # Boots the sim first; the recording brackets the whole xcodebuild run.
 REC_PID=""
 if [[ -n "$VIDEO" ]]; then
-  xcrun simctl boot "$SIM_NAME" 2>/dev/null || true
-  xcrun simctl bootstatus "$SIM_NAME" -b >/dev/null 2>&1
-  xcrun simctl io "$SIM_NAME" recordVideo --codec h264 --force "$OUT/motion.mov" 2>/dev/null &
+  xcrun simctl boot "$UDID" 2>/dev/null || true
+  xcrun simctl bootstatus "$UDID" -b >/dev/null 2>&1
+  xcrun simctl io "$UDID" recordVideo --codec h264 --force "$OUT/motion.mov" 2>/dev/null &
   REC_PID=$!
   sleep 1
 fi
@@ -46,7 +50,7 @@ run() {
   local res=$1; shift
   rm -rf "$res"
   xcodebuild test -project SoftNotes.xcodeproj -scheme SoftNotes \
-    -destination "platform=iOS Simulator,name=$SIM_NAME" \
+    -destination "$DEST" \
     -derivedDataPath "$WORK/dd" -resultBundlePath "$res" "$@" 2>&1 \
     | tee -a "$WORK/last.log" \
     | grep -E "error:|Test Case .*(passed|failed)|TEST (SUCCEEDED|FAILED)|\*\* "

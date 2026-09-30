@@ -23,6 +23,7 @@ struct HomeView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 ScreenHeader(title: "Notes", onSearch: onSearch)
+                    .padding(.horizontal, Theme.Metrics.listTextInset)
                     .padding(.top, 8)
 
                 FolderCard(
@@ -39,7 +40,7 @@ struct HomeView: View {
                     }
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.top, 20)
+                .padding(.top, 14)
 
                 RecentNotesSection(
                     notes: store.recent,
@@ -48,7 +49,8 @@ struct HomeView: View {
                 )
                 .padding(.top, 28)
             }
-            .padding(.horizontal, Theme.Metrics.screenPadding)
+            // Rows run wider than the header text (per reference).
+            .padding(.horizontal, Theme.Metrics.listInset)
             .padding(.bottom, 32)
         }
         .scrollIndicators(.hidden)
@@ -65,12 +67,15 @@ struct ScreenHeader: View {
 
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
-        formatter.setLocalizedDateFormatFromTemplate("EEEEdMMMM")   // "Tuesday, 28 September"
+        // Fixed English format to match the reference ("Tuesday, 28 September"),
+        // independent of the device's region settings.
+        formatter.locale = Locale(identifier: "en_GB")
+        formatter.dateFormat = "EEEE, d MMMM"
         return formatter
     }()
 
     var body: some View {
-        HStack(alignment: .bottom) {
+        HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 4) {
                 if showsDate {
                     Text(Self.dateFormatter.string(from: .now))
@@ -86,14 +91,13 @@ struct ScreenHeader: View {
             Spacer()
             Button(action: onSearch) {
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(Theme.Palette.ink)
-                    .frame(width: 40, height: 40)
+                    .frame(width: Theme.Metrics.searchButton, height: Theme.Metrics.searchButton)
                     .background(SoftSurface(Circle(), elevation: .raised))
             }
             .buttonStyle(.pressable(scale: 0.9))
             .accessibilityLabel("Search notes")
-            .padding(.bottom, 4)
         }
     }
 }

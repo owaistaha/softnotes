@@ -24,19 +24,21 @@ struct FolderCard: View {
 
     @State private var tilt: CGSize = .zero
 
-    // Geometry measured from the reference (points).
-    private let width: CGFloat = 248
-    private let height: CGFloat = 290
-    private let frontHeight: CGFloat = 186      // incl. 26pt tab
-    private let tabHeight: CGFloat = 26
-    private var frontTop: CGFloat { height - frontHeight }        // 104
-    private var bodyTop: CGFloat { frontTop + tabHeight }          // 130
+    // Geometry measured from the reference (points, 393pt-wide phone).
+    private let width: CGFloat = 235
+    private let height: CGFloat = 276
+    private let frontHeight: CGFloat = 174      // incl. 25pt tab
+    private let tabHeight: CGFloat = 25
+    /// How far the back panel peeks above the front panel's body.
+    private let backPeek: CGFloat = 43
+    private var frontTop: CGFloat { height - frontHeight }        // 102
+    private var bodyTop: CGFloat { frontTop + tabHeight }          // 127
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             backPanel
-                .frame(width: width - 16, height: 196)
-                .position(x: width / 2, y: bodyTop - 46 + 98)
+                .frame(width: width - 14, height: 184)
+                .position(x: width / 2, y: bodyTop - backPeek + 92)
 
             chips
 
@@ -121,9 +123,10 @@ struct FolderCard: View {
 
     private func chipSlot(_ index: Int) -> (point: CGPoint, rotation: Double) {
         switch index {
-        case 0:  (CGPoint(x: width / 2 + 9,  y: bodyTop - 70), 0)     // centre (newest)
-        case 1:  (CGPoint(x: width / 2 - 72, y: bodyTop - 64), -8)    // left
-        default: (CGPoint(x: width / 2 + 68, y: bodyTop - 100), 6)    // right, highest
+        // Centre (newest) sits lowest, overlapping the back panel's top edge.
+        case 0:  (CGPoint(x: width / 2 + 9,  y: bodyTop - 58), 0)
+        case 1:  (CGPoint(x: width / 2 - 71, y: bodyTop - 62), -8)    // left
+        default: (CGPoint(x: width / 2 + 64, y: bodyTop - 95), 6)     // right, highest
         }
     }
 
@@ -140,7 +143,7 @@ struct FolderCard: View {
                     startPoint: .top,
                     endPoint: .bottom
                 ),
-                elevation: .floating
+                elevation: .folder
             )
 
             HStack {
@@ -151,11 +154,12 @@ struct FolderCard: View {
                     set: { isOpen = !$0 }
                 ))
             }
-            .padding(16)
+            .padding(15)
         }
-        // Opening = front panel hinges forward on its bottom edge
+        // Opening = front panel hinges forward on its bottom edge. Kept small:
+        // in the reference the panel stays nearly flat when open.
         .rotation3DEffect(
-            .degrees(isOpen ? -16 : 0),
+            .degrees(isOpen ? -6 : 0),
             axis: (x: 1, y: 0, z: 0),
             anchor: .bottom,
             perspective: 0.45
@@ -169,8 +173,9 @@ struct FolderCard: View {
             .foregroundStyle(Theme.Palette.inkSecondary)
             .contentTransition(.numericText(value: Double(count)))
             .animation(Theme.Motion.snappy, value: count)
-            .frame(width: 48, height: 48)
+            .frame(width: Theme.Metrics.countBubble, height: Theme.Metrics.countBubble)
             .background(SoftSurface(Circle(), elevation: .raised))
+            .overlay(Circle().strokeBorder(Theme.Palette.hairline, lineWidth: 1))
             .accessibilityHidden(true)
     }
 
@@ -196,10 +201,12 @@ struct FolderCard: View {
 
 struct FolderShape: Shape {
     var cornerRadius: CGFloat = 24
-    var tabHeight: CGFloat = 26
-    var tabWidthRatio: CGFloat = 0.34
+    var tabHeight: CGFloat = 25
+    /// Where the tab's flat top ends (measured: 0.38 of the width; the
+    /// S-curve then runs to ≈0.50, per reference).
+    var tabWidthRatio: CGFloat = 0.38
     /// Horizontal run of the S-curve from the tab down to the body.
-    var tabSlope: CGFloat = 30
+    var tabSlope: CGFloat = 27
 
     func path(in rect: CGRect) -> Path {
         let r = cornerRadius
@@ -237,6 +244,12 @@ struct FolderToggle: View {
     let title: String
     @Binding var isOn: Bool
 
+    private let size = CGSize(width: 116, height: 46)
+    private let knob: CGFloat = 40
+    private var knobInset: CGFloat { (size.height - knob) / 2 }
+    /// Label keeps clear of the knob on the knob's side.
+    private var knobSide: CGFloat { knob + knobInset + 6 }
+
     var body: some View {
         Button {
             withAnimation(Theme.Motion.snappy) { isOn.toggle() }
@@ -252,16 +265,16 @@ struct FolderToggle: View {
                     .font(.system(size: 17, weight: .medium))
                     .foregroundStyle(isOn ? Theme.Palette.lavenderInk : Theme.Palette.inkSecondary)
                     .frame(maxWidth: .infinity, alignment: isOn ? .leading : .trailing)
-                    .padding(.leading, isOn ? 18 : 50)
-                    .padding(.trailing, isOn ? 50 : 18)
+                    .padding(.leading, isOn ? 16 : knobSide)
+                    .padding(.trailing, isOn ? knobSide : 16)
 
                 Circle()
                     .fill(.white)
                     .shadow(color: .black.opacity(0.10), radius: 4, y: 2)
-                    .frame(width: 40, height: 40)
-                    .padding(4)
+                    .frame(width: knob, height: knob)
+                    .padding(knobInset)
             }
-            .frame(width: 124, height: 48)
+            .frame(width: size.width, height: size.height)
         }
         .buttonStyle(.pressable)
         .sensoryFeedback(.selection, trigger: isOn)

@@ -109,6 +109,14 @@ is not done.
    Also add a `.gitignore` covering `*.xcodeproj/xcuserdata`, `DerivedData/`,
    `.DS_Store`, `build/`. Commit `project.yml`; the generated `.xcodeproj`
    can be committed or ignored — ask the human which they prefer if unsure.
+   **Done (Step 1):** the sources turned out to be flat at the repo root, so
+   the real `project.yml` uses a single `path: .` source with `*.swift` /
+   `**/*.swift` includes (new subfolders are picked up automatically). The
+   `.xcodeproj` is git-ignored (regenerate it), as is `Reference/*.mov`.
+   **Never put DerivedData inside the repo** (e.g. `-derivedDataPath build/…`):
+   XcodeGen scans the source path, finds the built app's `Info.plist`, sets
+   it as `INFOPLIST_FILE`, and the build fails with "Cycle inside SoftNotes".
+   Use the default DerivedData location or a path outside the repo.
 3. `xcodegen generate`.
 4. **Discover a simulator — don't hardcode one:**
    `xcrun simctl list devices available | grep iPhone` and pick the newest
@@ -128,34 +136,44 @@ is not done.
 
 ## What already exists — don't redo this
 
+All sources sit **flat at the repo root** (no `App/`, `DesignSystem/`,
+`Models/`, `Features/` folders). The grouping below is logical only.
+`project.yml` compiles every `.swift` file under the root, so new files can
+go at the root or in a new subfolder — both are picked up.
+
 ```
-App/
-  SoftNotesApp.swift            @main; RootContainerView; .preferredColorScheme(.light)
-  RootContainerView.swift       App shell (see "Architecture")
-DesignSystem/
-  Theme.swift                   ALL tokens: Palette, Radius, Metrics, Motion springs,
-                                PastelTone (7 tones: base + light), Font.soft*, Color(hex:),
-                                Comparable.clamped(to:)
-  SoftSurface.swift             Elevation (.raised/.floating multi-layer shadows),
-                                SoftSurface<Shape> view, PressableButtonStyle (.pressable),
-                                BlurSlideTransition (.blurSlide / .blurFade), IdleFloat (.idleFloat())
-  StackedIconView.swift         The two-tile glass icon (back solid tile + frosted front tile + glyph)
-Models/
-  Note.swift                    IconShape, NoteIcon (+ .library: the 12 picker icons),
-                                Note (+ .samples: 8 notes, .demo()), Date.softRelative(to:)
-  NotesStore.swift              @Observable: notes (newest first), count, recent (≤48h, max 3),
-                                folderPreview (first 3), saved, add, toggleSaved, delete
-Features/
-  Home/HomeView.swift           Header + FolderCard + RecentNotesSection; ScreenHeader (shared);
-                                FolderFrameKey preference (folder's global frame)
-  Home/FolderCard.swift         3D folder: back panel, chips, front panel (FolderShape),
-                                count bubble, FolderToggle; drag-tilt; receive bounce
-  Home/RecentNotesSection.swift Recent header + NoteRow (context menu: Save / Delete)
-  TabBar/FloatingTabBar.swift   AppTab, FlowID, FloatingTabBar (sliding pill), PrimaryActionButton
-  Saved/SavedView.swift         Saved list + empty state
-  Compose/ComposeFlowView.swift STUB — nav bar + morphing Next button only. Its Next
-                                button files Note.demo() so Home-side animations can be tested.
-README.md                       Human-facing setup + design spec summary
+project.yml                   XcodeGen spec (path: . + *.swift includes)
+.gitignore                    ignores *.xcodeproj/, build/, DerivedData/, Reference/*.mov
+Reference/                    reference-walkthrough.mov (local only, git-ignored)
+
+# App
+SoftNotesApp.swift            @main; RootContainerView; .preferredColorScheme(.light)
+RootContainerView.swift       App shell (see "Architecture")
+# Design system
+Theme.swift                   ALL tokens: Palette, Radius, Metrics, Motion springs,
+                              PastelTone (7 tones: base + light), Font.soft*, Color(hex:),
+                              Comparable.clamped(to:)
+SoftSurface.swift             Elevation (.raised/.floating/.folder multi-layer shadows),
+                              SoftSurface<Shape> view, PressableButtonStyle (.pressable),
+                              BlurSlideTransition (.blurSlide / .blurFade), IdleFloat (.idleFloat())
+StackedIconView.swift         The two-tile glass icon (back solid tile + frosted front tile +
+                              thin outline glyph)
+# Models
+Note.swift                    IconShape, NoteIcon (+ .library: the 12 picker icons, outline
+                              symbols), Note (+ .samples: 8 notes, .demo()), Date.softRelative(to:)
+NotesStore.swift              @Observable: notes (newest first), count, recent (≤48h, max 3),
+                              folderPreview (first 3), saved, add, toggleSaved, delete
+# Features
+HomeView.swift                Header + FolderCard + RecentNotesSection; ScreenHeader (shared);
+                              FolderFrameKey preference (folder's global frame)
+FolderCard.swift              3D folder: back panel, chips, front panel (FolderShape),
+                              count bubble, FolderToggle; drag-tilt; receive bounce
+RecentNotesSection.swift      Recent header + NoteRow (context menu: Save / Delete)
+FloatingTabBar.swift          AppTab, FlowID, FloatingTabBar (sliding pill), PrimaryActionButton
+SavedView.swift               Saved list + empty state
+ComposeFlowView.swift         STUB — nav bar + morphing Next button only. Its Next
+                              button files Note.demo() so Home-side animations can be tested.
+README.md                     Human-facing setup + design spec summary
 ```
 
 ### Architecture (must stay true)
@@ -164,7 +182,7 @@ README.md                       Human-facing setup + design spec summary
 RootContainerView (ZStack)
 ├─ Theme.Palette.canvas (ignoresSafeArea)
 ├─ tabContent: HomeView | SavedView      ← recedes (scale .94, blur 14, opacity 0) while composing
-│    └─ .safeAreaInset(.bottom): FloatingTabBar  (+ FAB in its top overlay)
+│    └─ .safeAreaInset(.bottom): FloatingTabBar  (ZStack(.top): track padded down + FAB)
 └─ ComposeFlowView (if isComposing)       ← in-place overlay, NOT a sheet / fullScreenCover
 ```
 
@@ -177,9 +195,14 @@ Key invariants:
   be *present* at a time — the FAB is removed (`if !isCollapsed`) when
   compose shows. Both state changes must happen inside the same
   `withAnimation` transaction or the morph breaks.
-- The FAB is positioned with `.alignmentGuide(.top)` (not `.offset`) so its
-  *layout* frame is where it's drawn — matched geometry reads layout frames.
-  Don't swap that for an offset.
+- The FAB is positioned by layout, not `.offset`: `FloatingTabBar` is a
+  `ZStack(alignment: .top)` whose track is padded down by half the FAB's
+  outer diameter (`PrimaryActionButton.outerDiameter / 2`), so the FAB's
+  centre sits on the track's top edge and its *layout* frame is where it's
+  drawn — matched geometry reads layout frames. Don't swap that for an
+  offset, and don't go back to `.alignmentGuide`: explicit guides don't
+  survive `.matchedGeometryEffect` (that's why the FAB rendered centred
+  inside the bar before Step 1b).
 - **`isFolderOpen` semantics:** `false` = folder closed = toggle **ON**
   (lavender, knob right). `true` = open = toggle OFF (grey, knob left),
   front panel hinged forward, chips lifted. Home idles closed. The fold
@@ -207,10 +230,17 @@ Key invariants:
 | Recessed track (tab bar, toggle off) | `#E7E6E8` + inner shadow |
 | Ink (text, FAB) | `#17161A` |
 | Secondary / tertiary text | `#8E8C93` / `#C2C0C6` |
-| Toggle on | bg `#DCD4FF`, text `#7B6FE0` |
+| Toggle on | bg `#E2DAFF`, text `#7B6FE0` |
 | Paper (note card) | `#FBF8EE` |
+| Hairline (count bubble edge) | black @ 6% |
 | Progress arc on Next button | amber `#F5B74A` |
 | Pastel tones (base / light) | lavender `#9087FD/#CBC6F7`, pink `#FD84A6/#F8C2D2`, blue `#6CABFD/#B3D2FC`, orange `#FFA962/#FFD6B0`, green `#6ED39A/#BDEBD0`, yellow `#FFCF5C/#FFE7A8`, indigo `#7E80F7/#C4C5FB` |
+
+Metrics (`Theme.Metrics`): text inset (`screenPadding`) 20 · row/list inset
+(`listInset`) 16 — rows run wider than header text · row 58 tall, 6 gap, icon
+8 from the row's left edge · search button 46 · count bubble 46 · tab bar 73
+tall, 31 side insets, 8 inner padding · FAB 62 disc + 5 ring.
+Glyphs are thin outline SF Symbols (non-`.fill`, regular weight).
 
 Springs (`Theme.Motion`): `snappy` 0.35s/0.25 bounce (small UI state),
 `smooth` 0.55s/0.12 (screen swaps), `bouncy` 0.6s/0.38 (things landing),
@@ -218,24 +248,34 @@ Springs (`Theme.Motion`): `snappy` 0.35s/0.25 bounce (small UI state),
 new feel is needed — don't inline one-off springs in views.
 
 ### 01 Home (≈ 0:12 in the video)
-- Status bar, then date caption ("Tuesday, 28 September", 13pt secondary),
-  "Notes" 34pt bold, tight tracking. White 40pt round search button, right.
-- Folder card centred: front panel 248×186pt (26pt tab on the left, S-curve
-  into the body), back panel 232pt wide peeking ~46pt above the body with a
-  paper-sheet outline. Three 48pt icon chips float above (left pink circle,
-  centre blue squircle, right purple circle, highest). Count bubble 48pt
-  white circle bottom-left; "Notes" toggle 124×48 bottom-right.
-- "Recent" 15pt semibold + "See all" 14pt secondary. Rows: white, radius
-  20, ~62pt tall, 9pt gap, 40pt squircle icon, title 16pt semibold,
-  relative time 13pt secondary, chevron tertiary.
-- Floating tab bar 68pt tall, 28pt side insets; FAB centred on its top edge.
+Measured on the 14.0s frame (settled, 9 notes; the reference phone is
+393pt wide). Numbers below are what the code now uses (Step 1b).
+- Status bar, then date caption (fixed English "EEEE, d MMMM" →
+  "Tuesday, 28 September", 13pt secondary), "Notes" 34pt bold, tight
+  tracking. White 46pt round search button, right, vertically centred on
+  the date+title block. Header text inset 20pt.
+- Folder card centred: front panel 235×174pt (25pt tab on the left; flat tab
+  top ends at 0.38 of the width, then a 27pt S-curve into the body), back
+  panel 221pt wide peeking ~43pt above the body with a paper-sheet outline.
+  Soft, short shadow (`Elevation.folder`). Three 48pt icon chips float above
+  (left pink circle, centre blue squircle — lowest, overlapping the back
+  panel's top edge — right purple circle, highest). Count bubble 46pt white
+  circle with a hairline edge, bottom-left; "Notes" toggle 116×46 with a 40pt
+  knob, bottom-right. Open hinge is only −6° (panel stays nearly flat).
+- "Recent" 15pt semibold + "See all" 14pt secondary, at the 20pt text inset.
+  Rows at a 16pt inset (wider than the text): white, radius 20, ~58pt tall,
+  6pt gap, 40pt squircle icon ~8pt from the row's left edge, title 16pt
+  medium, relative time 13pt secondary, chevron tertiary.
+- Floating tab bar 73pt tall, 31pt side insets; FAB centred on its top edge.
 
 ### 02 Tab bar (≈ 0:00–0:02)
-- Recessed grey capsule. White pill (104pt) slides between Home (left) and
-  Saved (right). Selected icon in colour + ink label; unselected icon
-  desaturated + secondary label.
-- FAB: 58pt black disc, white `+`, inside a 5pt canvas-coloured ring with a
-  soft drop shadow (reads as cut out of the bar).
+- Recessed grey capsule (inner shadows only, no bright outline). White pill
+  (104×57pt) slides between Home (left) and Saved (right). Selected icon in
+  colour + ink semibold label; unselected icon desaturated + secondary
+  medium label.
+- FAB: 62pt black disc, white `+`, inside a 5pt canvas-coloured halo ring
+  (sampled ≈ `#F1F1F1`, reads lighter than the track) with a faint top rim
+  and a soft drop shadow. Its centre sits on the track's top edge.
 
 ### 03 Pick an icon (≈ 0:02–0:05) — NOT BUILT YET
 - Screen enters with a blur-fade. Nav bar: round back button (left),
@@ -335,6 +375,12 @@ avoidance: let SwiftUI's safe area do it where possible.
 **Step 6 — Polish pass.** Frame-by-frame comparison against the reference
 for every section; tune `Theme.Motion` and geometry only through tokens.
 Reduce Motion path for the whole fold (see Hard rules). VoiceOver pass.
+**SE-size scroll vs tilt:** on iPhone SE (667pt tall) Home is taller than
+the screen, so the `ScrollView` scrolls and the folder's tilt
+`simultaneousGesture` can fight it (confirmed layout at Step 1; the drag
+itself is untested because simctl can't inject touches). Test on an SE
+simulator by hand and resolve (e.g. only tilt on horizontal-dominant drags,
+or a high-priority gesture on the folder).
 
 **Later / explicitly out of scope until asked:** note detail/edit screen,
 search, "See all" screen, persistence (SwiftData or a JSON file), dark mode,
@@ -361,8 +407,11 @@ iPad, widgets, sync, custom fonts. Don't start these on your own.
   becomes a simple cross-fade + count roll. Never an infinite animation
   without that check.
 - **Verify SF Symbols exist on iOS 17** before using one (there's no
-  cherry or rocket symbol — that's why `basket.fill` / `paperplane.fill`
-  are used). A missing symbol renders blank silently.
+  cherry or rocket symbol — that's why `basket` / `paperplane` are used).
+  A missing symbol renders blank silently. Use thin outline (non-`.fill`)
+  variants to match the reference. To check: look the name up in the iOS 17
+  runtime's `CoreGlyphs.bundle/name_availability.plist` (under
+  `/Library/Developer/CoreSimulator/Volumes/iOS_*/…/iOS 17.*.simruntime/…`).
 - **Don't change a token to fix one screen.** If Home needs a different
   shadow, that's a new `Elevation` case, not an edit to `.raised`.
 - Every view file keeps a working `#Preview`. If a preview needs the store,
@@ -384,8 +433,8 @@ iPad, widgets, sync, custom fonts. Don't start these on your own.
 - `RootContainerView`: `.onPreferenceChange` closure mutating `@State` can
   warn/error under strict concurrency — fine in Swift 5 mode; if needed,
   wrap the assignment in `Task { @MainActor in … }`.
-- `FolderCard.frontPanel`: the open hinge uses `-16°` about the x-axis. If
-  the panel tips *away* from the viewer instead of toward, flip the sign.
+- `FolderCard.frontPanel`: open hinge direction verified correct at Step 1
+  (tips toward the viewer); reduced from −16° to −6° in Step 1b.
 - `FolderCard` tilt is a `simultaneousGesture` inside a `ScrollView`; with
   `.scrollBounceBehavior(.basedOnSize)` Home shouldn't scroll on normal
   phones. On an SE-size device, check that tilt and scroll don't fight.
@@ -415,6 +464,7 @@ with simple fades.
 ## Status (update after each step — newest at the top)
 
 - [x] Step 1 — Compile & baseline (project.yml, build, screenshot vs reference)
+- [x] Step 1b — Match Home to the reference (FAB overhang, tokens, folder, rows, tab bar, outline icons)
 - [ ] Step 2 — Compose state (ComposeDraft, step navigation)
 - [ ] Step 3 — 03 Pick an icon
 - [ ] Step 4 — 04 Write a chit
@@ -423,4 +473,5 @@ with simple fades.
 
 Log:
 - (add one line per session: date, what changed, what's still off vs the reference)
+- 2026-09-30 — Step 1b: FAB now overhangs the track (ZStack + top padding; alignmentGuide removed). Tokens: lavenderTint #E2DAFF, hairline, listInset 16 / rowHeight 58 / rowSpacing 6 / rowLeading 8, searchButton 46, countBubble 46, tabBar 73×(31 inset, 8 pad), FAB 62; Font.softRowTitle (16 medium); Elevation.folder. Folder 235×174, tab 0.38 + 27pt curve (0.41 overshot when measured), chips re-slotted (centre lowest), toggle 116×46, hinge −6°. Outline SF Symbols everywhere (all verified on the iOS 17.5 runtime), lighter front glass. Fixed English date. git init + .gitignore (xcodeproj, Reference/*.mov). Still off: "Notes" title ~9% narrower than ref; ref chip glyphs a bit larger/bolder; ref toggle label slightly heavier; ref folder front has a faint mid-panel shading band; sample icons (basket/paperplane/book) differ from ref (cherries/sneaker/rocket) by design.
 - 2026-09-30 — Step 1: sources are flat at repo root (not App/, DesignSystem/…), so project.yml uses `path: .` + `*.swift` includes; added .gitignore; copied reference to Reference/reference-walkthrough.mov. Built clean on iPhone 17 Pro sim (Xcode 26.6) with zero code changes — no compile errors or warnings. Still off vs reference (14.0s frame): FAB sits centred inside the tab bar instead of overhanging its top edge (alignmentGuide not taking effect); FAB ~58pt vs ~62pt; folder ~6% too large; search button 40pt vs ~46pt and bottom-aligned instead of centred on the header; rows 20pt inset/62pt tall/9pt gap vs ~16/58/6; row icon further from edge; tab track has a bright outline the reference lacks; glyphs filled vs the reference's outline style; date uses device locale (US order); open-folder hinge is much stronger than the reference's.

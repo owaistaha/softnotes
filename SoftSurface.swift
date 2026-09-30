@@ -12,8 +12,11 @@ struct ShadowLayer: Hashable {
 enum Elevation {
     /// Rows, search button, count bubble.
     case raised
-    /// Folder, floating tab bar, FAB.
+    /// Large floating surfaces (compose card, Next button).
     case floating
+    /// The Home folder's front panel — softer and shorter than `.floating`,
+    /// so the folder sits close to the canvas (per reference).
+    case folder
 
     /// Each layer is rendered as its own shape copy (see `SoftSurface`) so the
     /// shadows don't compound the way chained `.shadow()` modifiers do.
@@ -32,6 +35,13 @@ enum Elevation {
                 ShadowLayer(color: .black.opacity(0.04), radius: 2,  y: 1),
                 ShadowLayer(color: .black.opacity(0.06), radius: 14, y: 8),
                 ShadowLayer(color: .black.opacity(0.08), radius: 36, y: 24),
+                ShadowLayer(color: .white.opacity(0.95), radius: 10, x: -4, y: -4),
+            ]
+        case .folder:
+            [
+                ShadowLayer(color: .black.opacity(0.035), radius: 2,  y: 1),
+                ShadowLayer(color: .black.opacity(0.045), radius: 10, y: 5),
+                ShadowLayer(color: .black.opacity(0.050), radius: 24, y: 12),
                 ShadowLayer(color: .white.opacity(0.95), radius: 10, x: -4, y: -4),
             ]
         }

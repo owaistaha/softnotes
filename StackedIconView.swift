@@ -38,12 +38,12 @@ struct StackedIconView: View {
                 .rotationEffect(.degrees(-7))
                 .offset(x: -shift, y: -shift)
 
-            // Front glass tile
+            // Front glass tile — tint kept light so the back tile reads through.
             ZStack {
                 clip.fill(.ultraThinMaterial)
                 clip.fill(
                     LinearGradient(
-                        colors: [icon.tone.light.opacity(0.85), icon.tone.light.opacity(0.55)],
+                        colors: [icon.tone.light.opacity(0.70), icon.tone.light.opacity(0.40)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
@@ -56,8 +56,9 @@ struct StackedIconView: View {
                     ),
                     lineWidth: max(0.75, size / 48)
                 )
+                // Thin outline glyph (per reference), not a filled symbol.
                 Image(systemName: icon.symbol)
-                    .font(.system(size: size * 0.32, weight: .semibold))
+                    .font(.system(size: size * 0.32, weight: .regular))
                     .foregroundStyle(.white)
                     .shadow(color: icon.tone.base.opacity(0.45), radius: 1.5, y: 0.5)
             }

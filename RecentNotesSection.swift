@@ -16,15 +16,18 @@ struct RecentNotesSection: View {
                     .font(.system(size: 14))
                     .foregroundStyle(Theme.Palette.inkSecondary)
             }
+            // Section label lines up with the header text, not the rows.
+            .padding(.horizontal, Theme.Metrics.listTextInset)
 
             if notes.isEmpty {
                 Text("Nothing new in the last two days. Tap + to write a note.")
                     .font(.softCaption)
                     .foregroundStyle(Theme.Palette.inkSecondary)
                     .padding(.vertical, 16)
+                    .padding(.horizontal, Theme.Metrics.listTextInset)
                     .transition(.blurSlide)
             } else {
-                VStack(spacing: 9) {
+                VStack(spacing: Theme.Metrics.rowSpacing) {
                     ForEach(notes) { note in
                         NoteRow(note: note) { onSelect(note) }
                             // New notes arrive from the top with a soft focus-pull
@@ -52,7 +55,7 @@ struct NoteRow: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(note.title)
-                        .font(.softHeadline)
+                        .font(.softRowTitle)
                         .foregroundStyle(Theme.Palette.ink)
                         .lineLimit(1)
                     // Re-render once a minute so "Just now" → "1m ago" stays honest.
@@ -69,8 +72,10 @@ struct NoteRow: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Theme.Palette.inkTertiary)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 11)
+            .padding(.leading, Theme.Metrics.rowLeading)
+            .padding(.trailing, Theme.Metrics.rowTrailing)
+            .padding(.vertical, 6)
+            .frame(minHeight: Theme.Metrics.rowHeight)
             .background(SoftSurface(shape, elevation: .raised))
             .contentShape(shape)
         }

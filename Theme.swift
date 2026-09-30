@@ -17,12 +17,14 @@ enum Theme {
         static let inkSecondary  = Color(hex: 0x8E8C93)
         static let inkTertiary   = Color(hex: 0xC2C0C6)
         /// "Notes" toggle when on.
-        static let lavenderTint  = Color(hex: 0xDCD4FF)
+        static let lavenderTint  = Color(hex: 0xE2DAFF)
         static let lavenderInk   = Color(hex: 0x7B6FE0)
         /// Progress arc around the Next button in the compose flow.
         static let amber         = Color(hex: 0xF5B74A)
         /// Paper colour of the note card in the compose flow.
         static let paper         = Color(hex: 0xFBF8EE)
+        /// Crisp 1pt edge on small round surfaces (count bubble).
+        static let hairline      = Color.black.opacity(0.06)
     }
 
     enum Radius {
@@ -32,10 +34,28 @@ enum Theme {
     }
 
     enum Metrics {
+        /// Inset of text: screen headers, section labels, compose nav.
         static let screenPadding: CGFloat = 20
-        static let tabBarHeight: CGFloat  = 68
-        static let tabBarInset: CGFloat   = 28
-        static let fabSize: CGFloat       = 58
+        /// Inset of rows / list cards. Smaller than `screenPadding`, so rows
+        /// run slightly wider than the header text (per reference).
+        static let listInset: CGFloat     = 16
+        /// Extra inset that brings text inside a `listInset` container back
+        /// in line with `screenPadding`.
+        static var listTextInset: CGFloat { screenPadding - listInset }
+
+        static let rowHeight: CGFloat     = 58
+        static let rowSpacing: CGFloat    = 6
+        /// Row icon sits close to the row's left edge.
+        static let rowLeading: CGFloat    = 8
+        static let rowTrailing: CGFloat   = 14
+
+        static let searchButton: CGFloat  = 46
+        static let countBubble: CGFloat   = 46
+
+        static let tabBarHeight: CGFloat  = 73
+        static let tabBarInset: CGFloat   = 31
+        static let tabBarPadding: CGFloat = 8
+        static let fabSize: CGFloat       = 62
         static let fabRing: CGFloat       = 5
     }
 
@@ -94,6 +114,8 @@ extension Font {
     static let softLargeTitle = Font.system(size: 34, weight: .bold)
     static let softTitle      = Font.system(size: 24, weight: .bold)
     static let softHeadline   = Font.system(size: 16, weight: .semibold)
+    /// Note row titles — one step lighter than `softHeadline` (per reference).
+    static let softRowTitle   = Font.system(size: 16, weight: .medium)
     static let softSection    = Font.system(size: 15, weight: .semibold)
     static let softBody       = Font.system(size: 15, weight: .regular)
     static let softCaption    = Font.system(size: 13, weight: .regular)

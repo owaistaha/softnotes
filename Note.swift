@@ -15,19 +15,21 @@ struct NoteIcon: Codable, Hashable, Identifiable {
 extension NoteIcon {
     /// The 12-icon grid for step 1 of the compose flow ("Pick an icon").
     /// Order mirrors the reference grid, row by row.
+    /// Outline (non-.fill) symbols to match the reference's thin line glyphs.
+    /// All verified present in SF Symbols 5 (iOS 17).
     static let library: [NoteIcon] = [
-        NoteIcon(symbol: "face.smiling",       tone: .lavender, shape: .circle),
-        NoteIcon(symbol: "basket.fill",        tone: .pink,     shape: .circle),
-        NoteIcon(symbol: "paperplane.fill",    tone: .indigo,   shape: .circle),
-        NoteIcon(symbol: "flame.fill",         tone: .orange,   shape: .squircle),
-        NoteIcon(symbol: "sun.max.fill",       tone: .blue,     shape: .squircle),
-        NoteIcon(symbol: "cup.and.saucer.fill",tone: .orange,   shape: .circle),
-        NoteIcon(symbol: "leaf.fill",          tone: .green,    shape: .squircle),
-        NoteIcon(symbol: "heart.fill",         tone: .pink,     shape: .squircle),
-        NoteIcon(symbol: "drop.fill",          tone: .blue,     shape: .circle),
-        NoteIcon(symbol: "book.closed.fill",   tone: .orange,   shape: .squircle),
-        NoteIcon(symbol: "figure.walk",        tone: .green,    shape: .circle),
-        NoteIcon(symbol: "star.fill",          tone: .yellow,   shape: .squircle),
+        NoteIcon(symbol: "face.smiling",    tone: .lavender, shape: .circle),
+        NoteIcon(symbol: "basket",          tone: .pink,     shape: .circle),
+        NoteIcon(symbol: "paperplane",      tone: .indigo,   shape: .circle),
+        NoteIcon(symbol: "flame",           tone: .orange,   shape: .squircle),
+        NoteIcon(symbol: "sun.max",         tone: .blue,     shape: .squircle),
+        NoteIcon(symbol: "cup.and.saucer",  tone: .orange,   shape: .circle),
+        NoteIcon(symbol: "leaf",            tone: .green,    shape: .squircle),
+        NoteIcon(symbol: "heart",           tone: .pink,     shape: .squircle),
+        NoteIcon(symbol: "drop",            tone: .blue,     shape: .circle),
+        NoteIcon(symbol: "book.closed",     tone: .orange,   shape: .squircle),
+        NoteIcon(symbol: "figure.walk",     tone: .green,    shape: .circle),
+        NoteIcon(symbol: "star",            tone: .yellow,   shape: .squircle),
     ]
 }
 
@@ -67,28 +69,28 @@ extension Note {
         let day: TimeInterval = 86_400
         return [
             Note(title: "Buy fresh cherries",
-                 icon: NoteIcon(symbol: "basket.fill", tone: .pink, shape: .circle),
+                 icon: NoteIcon(symbol: "basket", tone: .pink, shape: .circle),
                  tags: ["Errands"], createdAt: .now - 2 * hour),
             Note(title: "Launch day checklist",
-                 icon: NoteIcon(symbol: "paperplane.fill", tone: .lavender, shape: .circle),
+                 icon: NoteIcon(symbol: "paperplane", tone: .lavender, shape: .circle),
                  tags: ["Work"], createdAt: .now - 26 * hour, isSaved: true),
             Note(title: "Book club picks",
-                 icon: NoteIcon(symbol: "book.closed.fill", tone: .orange),
+                 icon: NoteIcon(symbol: "book.closed", tone: .orange),
                  createdAt: .now - 4 * day),
             Note(title: "Water the monstera",
-                 icon: NoteIcon(symbol: "leaf.fill", tone: .green),
+                 icon: NoteIcon(symbol: "leaf", tone: .green),
                  createdAt: .now - 6 * day),
             Note(title: "Gift ideas for Mum",
-                 icon: NoteIcon(symbol: "heart.fill", tone: .pink),
+                 icon: NoteIcon(symbol: "heart", tone: .pink),
                  createdAt: .now - 9 * day, isSaved: true),
             Note(title: "Morning pages",
-                 icon: NoteIcon(symbol: "sun.max.fill", tone: .yellow),
+                 icon: NoteIcon(symbol: "sun.max", tone: .yellow),
                  createdAt: .now - 12 * day),
             Note(title: "Run club route",
                  icon: NoteIcon(symbol: "figure.walk", tone: .green, shape: .circle),
                  createdAt: .now - 15 * day),
             Note(title: "Coffee beans to try",
-                 icon: NoteIcon(symbol: "cup.and.saucer.fill", tone: .orange, shape: .circle),
+                 icon: NoteIcon(symbol: "cup.and.saucer", tone: .orange, shape: .circle),
                  createdAt: .now - 21 * day),
         ]
     }()
@@ -99,7 +101,7 @@ extension Note {
         Note(
             title: "Have a good day",
             body: "Have a good day",
-            icon: NoteIcon(symbol: "sun.max.fill", tone: .blue),
+            icon: NoteIcon(symbol: "sun.max", tone: .blue),
             tags: ["Daily"]
         )
     }

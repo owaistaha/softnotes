@@ -39,7 +39,6 @@ struct RootContainerView: View {
                         isCollapsed: isComposing,
                         onPrimaryAction: startComposing
                     )
-                    .padding(.top, 34)       // room for the FAB's overhang
                     .padding(.bottom, 4)
                 }
 

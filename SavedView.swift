@@ -11,6 +11,7 @@ struct SavedView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 ScreenHeader(title: "Saved", onSearch: onSearch)
+                    .padding(.horizontal, Theme.Metrics.listTextInset)
                     .padding(.top, 8)
 
                 if store.saved.isEmpty {
@@ -18,7 +19,7 @@ struct SavedView: View {
                         .padding(.top, 80)
                         .transition(.blurSlide)
                 } else {
-                    VStack(spacing: 9) {
+                    VStack(spacing: Theme.Metrics.rowSpacing) {
                         ForEach(store.saved) { note in
                             NoteRow(note: note) { onSelectNote(note) }
                                 .transition(.blurSlide)
@@ -27,7 +28,7 @@ struct SavedView: View {
                     .padding(.top, 24)
                 }
             }
-            .padding(.horizontal, Theme.Metrics.screenPadding)
+            .padding(.horizontal, Theme.Metrics.listInset)
             .padding(.bottom, 32)
         }
         .scrollIndicators(.hidden)

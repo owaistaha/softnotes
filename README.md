@@ -4,31 +4,29 @@ Home dashboard, floating tab bar and app shell recreated from the reference reco
 
 ## Setup
 
-1. Xcode → New Project → iOS App (SwiftUI, Swift). Name it `SoftNotes`, deployment target iOS 17.0.
-2. Delete the generated `ContentView.swift` and `<Name>App.swift`.
-3. Drag the `App`, `DesignSystem`, `Models` and `Features` folders into the project ("Create groups", add to target).
-4. Run on an iPhone 15/16 simulator. Every view file has its own `#Preview`.
+1. `brew install xcodegen`
+2. `xcodegen generate` — builds `SoftNotes.xcodeproj` from `project.yml` (the project file is git-ignored; never hand-edit it).
+3. Open `SoftNotes.xcodeproj` and run on an iPhone simulator (a ~393–402 pt Pro is closest to the reference). Every view file has its own `#Preview`.
+4. For frame comparisons, put the recording at `Reference/reference-walkthrough.mov` (git-ignored).
 
 ## Structure
 
+All sources are flat at the repo root; `project.yml` compiles every `.swift` file under it.
+
 ```
-App/
-  SoftNotesApp.swift         @main, forces light mode
-  RootContainerView.swift    shell: canvas, tabs, tab bar, compose overlay, save choreography
-DesignSystem/
-  Theme.swift                palette, pastel tones, metrics, springs, type
-  SoftSurface.swift          layered shadows, SoftSurface, pressable style, blur transitions, idle float
-  StackedIconView.swift      the two-tile glass icon
-Models/
-  Note.swift                 Note, NoteIcon, icon library (12), samples, relative time
-  NotesStore.swift           @Observable store
-Features/
-  Home/HomeView.swift        header + folder + recent; publishes FolderFrameKey
-  Home/FolderCard.swift      3D folder, chips, count bubble, Notes toggle, FolderShape
-  Home/RecentNotesSection.swift
-  TabBar/FloatingTabBar.swift  tab bar + PrimaryActionButton (FAB / Next)
-  Saved/SavedView.swift
-  Compose/ComposeFlowView.swift  STUB — replaced in the next step
+SoftNotesApp.swift         @main, forces light mode
+RootContainerView.swift    shell: canvas, tabs, tab bar, compose overlay, save choreography
+Theme.swift                palette, pastel tones, metrics, springs, type
+SoftSurface.swift          layered shadows, SoftSurface, pressable style, blur transitions, idle float
+StackedIconView.swift      the two-tile glass icon
+Note.swift                 Note, NoteIcon, icon library (12), samples, relative time
+NotesStore.swift           @Observable store
+HomeView.swift             header + folder + recent; publishes FolderFrameKey
+FolderCard.swift           3D folder, chips, count bubble, Notes toggle, FolderShape
+RecentNotesSection.swift
+FloatingTabBar.swift       tab bar + PrimaryActionButton (FAB / Next)
+SavedView.swift
+ComposeFlowView.swift      STUB — replaced in the next step
 ```
 
 ## Design spec (measured from the recording)
@@ -39,13 +37,15 @@ Features/
 | Surface (cards) | `#FFFFFF` |
 | Tab track | `#E7E6E8`, inner shadow |
 | Ink / FAB | `#17161A` |
-| Toggle on | `#DCD4FF` bg, `#7B6FE0` text |
+| Toggle on | `#E2DAFF` bg, `#7B6FE0` text; 116 × 46 pt, 40 pt knob |
 | Pastels (back tile) | pink `#FD84A6`, blue `#6CABFD`, lavender `#9087FD` (+ orange, green, yellow, indigo from the picker grid) |
 | Note paper | `#FBF8EE` |
 | Progress arc | amber `#F5B74A` |
-| Folder | 248 × 186 pt front (26 pt tab), back panel 232 pt, chips 48 pt |
-| Rows | radius 20, ~62 pt tall, 9 pt gap, 40 pt icon |
-| Tab bar | 68 pt tall, 28 pt side inset, 104 pt white pill; FAB 58 pt + 5 pt ring, centred on the bar's top edge |
+| Folder | 235 × 174 pt front (25 pt tab, flat top to 0.38 of width + 27 pt curve), back panel 221 pt, chips 48 pt, count bubble 46 pt |
+| Rows | 16 pt screen inset (header text at 20), radius 20, ~58 pt tall, 6 pt gap, 40 pt icon 8 pt from the edge, title 16 pt medium |
+| Tab bar | 73 pt tall, 31 pt side inset, 104 pt white pill, no outline; FAB 62 pt + 5 pt canvas halo, centred on the bar's top edge |
+| Header | fixed English date "Tuesday, 28 September"; 46 pt search button centred on date + title |
+| Glyphs | thin outline SF Symbols (non-`.fill`), regular weight |
 
 ## Motion already wired
 

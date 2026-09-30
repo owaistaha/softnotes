@@ -30,6 +30,11 @@ struct FolderCard: View {
     /// note is added this turns off in the same transaction — every old chip
     /// is then already in its new slot, so nothing crosses the landing chip.
     var vacatesCentre: Bool = false
+    /// What the "received" bounce follows (default: `count`). The save shows
+    /// the count one ahead while the icon is still flying; the bounce waits
+    /// for the note itself, because the landing point is computed for the
+    /// folder at rest — bouncing earlier would move the chip off the icon.
+    var receivedCount: Int? = nil
     var onTap: () -> Void = {}
 
     @State private var tilt: CGSize = .zero
@@ -73,7 +78,7 @@ struct FolderCard: View {
         .rotation3DEffect(.degrees(tilt.width), axis: (x: 0, y: 1, z: 0), perspective: 0.55)
         .rotation3DEffect(.degrees(-tilt.height), axis: (x: 1, y: 0, z: 0), perspective: 0.55)
         // "Received a note" bounce whenever the count changes
-        .keyframeAnimator(initialValue: 1.0, trigger: count) { content, scale in
+        .keyframeAnimator(initialValue: 1.0, trigger: receivedCount ?? count) { content, scale in
             content.scaleEffect(scale, anchor: .bottom)
         } keyframes: { _ in
             SpringKeyframe(0.96, duration: 0.12, spring: .snappy)

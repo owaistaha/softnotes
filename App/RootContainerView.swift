@@ -42,6 +42,9 @@ struct RootContainerView: View {
     /// Recent holds the new row back until `rowEntry` (reference: it arrives
     /// ≈1.8 s after the landing, after the zoom-out).
     @State private var heldNoteID: Note.ID?
+    /// The count bubble reads one ahead of the store from `countRoll` until
+    /// the landing (reference: the count rolls just before the icon settles).
+    @State private var countLead = 0
     @State private var saveTask: Task<Void, Never>?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -159,6 +162,7 @@ struct RootContainerView: View {
                     // Set up with the rest of Home at `.folded`, out of sight: shuffled
                     // during the push, the leaving right chip showed as Home rose.
                     vacatesCentreChip: foldPhase >= .folded && foldPhase < .landed,
+                    countLead: countLead,
                     onSeeAll: { withAnimation(Theme.Motion.snappy) { selectedTab = .saved } }
                 )
                 .transition(.blurFade)
@@ -308,11 +312,18 @@ struct RootContainerView: View {
                 // landing waits for the drop to *finish*, so the icon is
                 // exactly on the slot in the frame the chip replaces it.
                 try await at(FoldTimeline.drop)
-                await withCheckedContinuation { done in
-                    withAnimation(Theme.Motion.dropIn, completionCriteria: .logicallyComplete) {
-                        foldPhase = .drop
-                    } completion: { done.resume() }
+                let dropFinished = Task { @MainActor in
+                    await withCheckedContinuation { done in
+                        withAnimation(Theme.Motion.dropIn, completionCriteria: .logicallyComplete) {
+                            foldPhase = .drop
+                        } completion: { done.resume() }
+                    }
                 }
+                // The count rolls (and the folder bounces) just before the
+                // icon settles — the store still holds the old notes.
+                try await at(FoldTimeline.countRoll)
+                withAnimation(Theme.Motion.snappy) { countLead = 1 }
+                await dropFinished.value
                 try Task.checkCancellation()
 
                 // 07 — the icon becomes the centre chip: the note is added
@@ -320,6 +331,7 @@ struct RootContainerView: View {
                 // held back from Recent for now.
                 withAnimation(Theme.Motion.bouncy) {
                     store.add(note)
+                    countLead = 0
                     pendingNote = nil
                     landingNoteID = note.id
                     heldNoteID = note.id
@@ -364,6 +376,7 @@ struct RootContainerView: View {
         withTransaction(instantly) {
             if let note = pendingNote { store.add(note) }
             pendingNote = nil
+            countLead = 0
             selectedTab = .home
             isComposing = false
             isFolderOpen = false

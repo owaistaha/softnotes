@@ -63,16 +63,21 @@ enum FoldTimeline {
     /// (ref: card 1967→≈2670, folder 2017→≈2470).
     static let push = 2000
     /// Card drops behind the front panel, icon flies to the chip slot
-    /// (ref 2950→≈3190). The landing (note added) fires when this animation
-    /// completes — the icon is then exactly on the slot — at ≈3280, so the
-    /// icon arrives ≈3170–3220 visibly, like the reference (whose count roll
-    /// runs ≈3040–3140, slightly before its icon settles).
-    static let drop = 3040
-    /// Toggle flips on / folder closes this long after the landing (ref: icon
-    /// lands ≈3170–3220, toggle reads lavender from ≈3500). Relative, because
-    /// the landing waits for the drop animation to finish. The track's colour
-    /// takes ≈170 ms to read as lavender on video, hence the short gap.
-    static let closeAfterLanding = 130
+    /// (ref 2950→≈3200). The landing (note added) fires when this animation
+    /// completes (`Theme.Motion.dropIn`, 0.24 s) — the icon is then exactly
+    /// on the slot — at ≈3230, i.e. ≈3190 visibly (ref icon settles
+    /// ≈3170–3220). 5B had 3040: that was tuned while a Canvas mask delayed
+    /// the first frames; on the 5B video the drop showed at 3000 vs 2950.
+    static let drop = 2990
+    /// Count bubble rolls 8 → 9 (with the folder's receive bounce) while the
+    /// icon is still flying in — ref roll visible ≈3040–3140, before its icon
+    /// settles. The store only changes at the landing.
+    static let countRoll = 3080
+    /// Toggle flips on / folder closes this long after the landing. Relative,
+    /// because the landing waits for the drop animation to finish. On video
+    /// the track reads lavender ≈200 ms after the flip (5B: landing + 130 →
+    /// 3616), so landing (≈3230) + 70 reads lavender at ≈3500 like the ref.
+    static let closeAfterLanding = 70
     /// Zoom back to ×1, header/Recent/tab bar fade in (ref 3950→≈4520).
     static let zoomOut = 3990
     /// New row blur-slides into Recent (ref 4970→≈5370; scheduled earlier

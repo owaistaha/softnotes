@@ -23,6 +23,9 @@ struct HomeView: View {
     var landingNoteID: Note.ID? = nil
     /// The save flight is about to land: the centre chip slot is emptied.
     var vacatesCentreChip: Bool = false
+    /// Shown on the count bubble ahead of the store: the count rolls just
+    /// before the flying icon settles (reference), the note is added after.
+    var countLead: Int = 0
     var onSearch: () -> Void = {}
     var onSeeAll: () -> Void = {}
     var onOpenFolder: () -> Void = {}
@@ -37,11 +40,12 @@ struct HomeView: View {
                     .modifier(ChromeVisibility(isVisible: showsChrome))
 
                 FolderCard(
-                    count: store.count,
+                    count: store.count + countLead,
                     previews: store.folderPreview,
                     isOpen: $isFolderOpen,
                     landingNoteID: landingNoteID,
                     vacatesCentre: vacatesCentreChip,
+                    receivedCount: store.count,
                     onTap: onOpenFolder
                 )
                 // Report the folder's on-screen frame so the compose flow can

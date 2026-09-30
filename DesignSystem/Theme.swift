@@ -107,6 +107,16 @@ enum Theme {
         /// then easing out (measured on video: 0.25 s linear-ish was ~25% too
         /// fast into edge-on and hid the edges after ~50 ms).
         static let fold = Animation.timingCurve(0.3, 0.2, 0.5, 0.95, duration: 0.36)
+        /// 06 push: Home rises into view (zoomed) and the folded card rises
+        /// above it (reference ≈0.5–0.7 s, decelerating, no overshoot).
+        static let push = Animation.spring(duration: 0.55, bounce: 0)
+        /// 06 drop: the card slides behind the front panel and the icon
+        /// flies into the chip slot (reference ≈0.24 s, ease-in-out).
+        static let dropIn = Animation.timingCurve(0.45, 0, 0.35, 1, duration: 0.24)
+        /// 07: Home zooms back to ×1 (reference ≈0.57 s).
+        static let zoomOut = Animation.spring(duration: 0.6, bounce: 0)
+        /// 07: header, Recent and tab bar fading/focusing back in (≈0.3 s).
+        static let chromeIn = Animation.easeOut(duration: 0.3)
         /// Reduce Motion stand-in for the whole save → fold → file sequence.
         static let crossFade = Animation.easeInOut(duration: 0.25)
     }

@@ -39,6 +39,19 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.owaistaha.softnotes.uitests
         GENERATE_INFOPLIST_FILE: YES
         TEST_TARGET_NAME: SoftNotes
+  SoftNotesTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: SoftNotesTests
+    dependencies:
+      - target: SoftNotes
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.owaistaha.softnotes.tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/SoftNotes.app/SoftNotes"
+        BUNDLE_LOADER: "$(TEST_HOST)"
 schemes:
   SoftNotes:
     build:
@@ -49,4 +62,5 @@ schemes:
     test:
       config: Debug
       targets:
+        - SoftNotesTests
         - SoftNotesUITests

@@ -2,6 +2,7 @@
 # Run the UI tests and export every XCTAttachment (screenshots) to build/shots/ui/.
 #   scripts/ui-shots.sh                          # all tests
 #   scripts/ui-shots.sh testFabMorphOpenAndClose # one test (method name)
+#   scripts/ui-shots.sh SoftNotesTests/FoldingCardTests  # unit tests (id with a /)
 # Env: SIM_NAME (default "iPhone 17 Pro"). DerivedData + the .xcresult live in
 # $TMPDIR, NOT in the repo (an in-repo DerivedData breaks XcodeGen — see CLAUDE.md).
 set -eo pipefail
@@ -11,7 +12,9 @@ SIM_NAME=${SIM_NAME:-"iPhone 17 Pro"}
 WORK=${TMPDIR:-/tmp}/softnotes-uitests
 OUT=build/shots/ui
 RESULT=$WORK/result.xcresult
-ONLY=${1:+-only-testing:SoftNotesUITests/SoftNotesUITests/$1}
+# A bare method name runs that UI test; anything with a "/" is passed through
+# (e.g. SoftNotesTests/FoldingCardTests for the unit tests).
+if [[ "$1" == */* ]]; then ONLY="-only-testing:$1"; else ONLY=${1:+-only-testing:SoftNotesUITests/SoftNotesUITests/$1}; fi
 
 rm -rf "$RESULT" "$OUT"; mkdir -p "$WORK" "$OUT"
 

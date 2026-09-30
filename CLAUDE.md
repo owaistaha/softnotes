@@ -182,8 +182,8 @@ Features/
                                 NoteCardContent (flat card, ONE view — Step 5 renders it twice
                                 and masks halves), NoteCardStaticText, NoteCardFormat
   Compose/KeyboardOverlapPadding.swift  iOS 26 keyboard safe-area fix (see Architecture)
-  Compose/FoldTimeline.swift    FoldPhase (idle … folded, push, drop, landed, close, zoomOut,
-                                rowEntry), FoldTimeline (ms after the tap), FoldCard, FoldLanding
+  Compose/FoldTimeline.swift    FoldPhase (idle … folded, push, pushStep, drop, landed, close,
+                                zoomOut, rowEntry), FoldTimeline (ms after the tap), FoldCard, FoldLanding
   Compose/FoldingCardView.swift 06 Fold: NoteCardContent drawn twice, clipped to halves (CardHalf);
                                 flap turns about the centre line, shades, tucks behind past 90°
   Compose/FoldStage.swift       05/06/07 flight: Animatable (settle/lift/fold/push/drop) — card
@@ -316,6 +316,19 @@ Key invariants:
   newest on top (`zIndex`): drawn underneath, the old centre chip hid the
   hand-off for 3 frames. Verified on video: the icon's centroid closes on the
   slot and the swap frame changes no more than its neighbours.
+- **Empty centre slot:** at `.folded` (out of sight, no animation) Home is
+  told `vacatesCentreChip`: chips move one slot along (centre → left, left →
+  right, right leaves), so the push shows two chips like the reference and
+  at `.landed` every old chip is already in its final slot — nothing crosses
+  the landing chip. Shuffling at the push start showed the leaving chip
+  rising into view (video, 6A).
+- **Count leads the store:** from `FoldTimeline.countRoll` the count bubble
+  shows `store.count + countLead` (1), so it rolls while the icon is still
+  flying (reference); `countLead` returns to 0 in the landing transaction.
+  The folder's receive bounce follows `receivedCount` (the real store
+  count), NOT the displayed count: the landing point is computed for the
+  folder at rest, and bouncing before the landing would move the chip off
+  the icon.
 - **Recent holds the new row** (`heldNoteID`) until `.rowEntry` — the
   reference shows the two old rows through the zoom-out and slides the new
   one in ≈1.8 s after the landing.
@@ -347,7 +360,11 @@ Metrics (`Theme.Metrics`): text inset (`screenPadding`) 20 · row/list inset
 (`listInset`) 16 — rows run wider than header text · row 58 tall, 6 gap, icon
 8 from the row's left edge · search button 46 · count bubble 46 · tab bar 73
 tall, 31 side insets, 8 inner padding · FAB 62 disc + 5 ring.
-Glyphs are thin outline SF Symbols (non-`.fill`, regular weight).
+Glyphs are outline SF Symbols (non-`.fill`), `Theme.Glyph`: 0.38 × icon
+size, semibold (6A: measured on the picker's star at the reference's
+1.24 px/pt — 0.32 regular was ≈12% small and ≈half the ink). Front glass
+tint `Theme.Glass`: `.standard` (Home) and `.vivid` (picker: the reference's
+picker tiles are ≈ the tone's `light` colour; Home rows are not).
 
 Springs (`Theme.Motion`): `snappy` 0.35s/0.25 bounce (small UI state),
 `smooth` 0.55s/0.12 (screen swaps), `bouncy` 0.6s/0.38 (things landing),
@@ -358,7 +375,8 @@ new feel is needed — don't inline one-off springs in views.
 Measured on the 14.0s frame (settled, 9 notes; the reference phone is
 393pt wide). Numbers below are what the code now uses (Step 1b).
 - Status bar, then date caption (fixed English "EEEE, d MMMM" →
-  "Tuesday, 28 September", 13pt secondary), "Notes" 34pt bold, tight
+  "Tuesday, 28 September", 13pt secondary), "Notes" 36pt bold (6A: ink
+  94.0 × 25.6pt measured; 34pt was 6% narrower), tight
   tracking. White 46pt round search button, right, vertically centred on
   the date+title block. Header text inset 20pt.
 - Folder card centred: front panel 235×174pt (25pt tab on the left; flat tab
@@ -367,7 +385,10 @@ Measured on the 14.0s frame (settled, 9 notes; the reference phone is
   Soft, short shadow (`Elevation.folder`). Three 48pt icon chips float above
   (left pink circle, centre blue squircle — lowest, overlapping the back
   panel's top edge — right purple circle, highest). Count bubble 46pt white
-  circle with a hairline edge, bottom-left; "Notes" toggle 116×46 with a 40pt
+  circle with a hairline edge, bottom-left (front panel fill: flat ≈253 for
+  ≈39pt below the body top, a faint 3-level step, then 249 → 245 —
+  `Theme.Palette.folderFront`); "Notes" toggle (label 19 semibold, grey
+  2pt rim inside the track — `softToggleLabel`, `toggleRim`) 116×46 with a 40pt
   knob, bottom-right. Open hinge is only −6° (panel stays nearly flat).
 - "Recent" 15pt semibold + "See all" 14pt secondary, at the 20pt text inset.
   Rows at a 16pt inset (wider than the text): white, radius 20, ~58pt tall,
@@ -496,15 +517,19 @@ the presentation zoom drops out). ms after the tap:
 | Phase (`FoldPhase`) | Reference (visible) | Ours (visible, final video) | What happens |
 |---|---|---|---|
 | folded | 1700 → 1967 | 1566 → 1966 | Folded card + icon hold. (Ours: compose closes and Home is set up out of sight at 1830.) |
-| push | card 1967 → ≈2670 (−156pt @852, two steps); Home first pixels 2017, settled ≈2470 | card 1966 → ≈2530 (−160pt); Home first pixels 2000 | Home rises from below, zoomed ×1.3, folder OPEN (toggle off), OLD count 8, old chips. The card + icon rise above it. |
-| drop | 2950 → ≈3220 | 3000 → 3233 | Card slides **behind the front panel** (masked by its outline, tab included), shrinking to ≈0.86 and blurring (≈8pt); the icon flies into the centre chip slot shrinking 80 → 62pt (48 × 1.3). |
-| landed | icon settles ≈3170–3220; count roll ≈3040–3140 | swap at ≈3250; count roll starts there | Icon becomes the chip (no gap, no double); count rolls 8 → 9; folder dips ≈4pt and recovers (receive bounce); old chips shuffle (ours: old centre → left, left → right, right leaves — the reference's centre slot is empty during the push, so it has nothing to shuffle). |
-| close | toggle reads lavender ≈3500 → 3620 | ≈3616 | Toggle flips on, folder closes (chips settle down 14pt). |
-| zoomOut | 3950 → ≈4520; Recent visible ≈4167; + ≈4217; header ≈4200–4300 | Recent ≈4083–4216; + 4216; header ≈4250–4316 | Home ×1.3 → ×1; header, Recent (two OLD rows) and tab bar fade/focus in. The + fades in with the bar — no morph, no dip (darkness monotonic 81 → 16 in ≈120 ms). |
-| rowEntry | 4970 → ≈5370 | ≈5050 → 5370 | The new row blur-slides into the top of Recent; old rows move down. |
+| push / pushStep | card 1933 → ≈2350 (−128pt), hold, 2483 → ≈2667 (−26pt) — −156pt @852 in two steps; Home first pixels 2017, settled ≈2470 (one step); only TWO chips (left, right), centre slot empty | card 1946 → ≈2400, second step ≈2446 → 2600 (−160pt); two chips, centre empty, the old right chip never visible | Home rises from below, zoomed ×1.3, folder OPEN (toggle off), OLD count 8. The card + icon rise above it. Card rise per frame vs ref: mean error 4.1pt (one step: 9.2). |
+| drop | 2950 → ≈3220 | ≈3013 → 3230 (±2 frames of host jitter) | Card slides **behind the front panel** (masked by its outline, tab included), shrinking to ≈0.86 and blurring (≈8pt); the icon flies into the centre chip slot shrinking 80 → 62pt (48 × 1.3). |
+| (count) | roll ≈3040–3140, folder dips ≈3050–3280 | roll ≈3033 → 3167 | Count rolls 8 → 9 while the icon is still flying (`countLead`); the store is unchanged. |
+| landed | icon settles ≈3170–3220 | swap ≈3230–3246 | Icon becomes the chip (no gap, no double: swap-frame diff 0.04–0.07, the smallest in the window; blue pixel count steady); receive bounce (ours starts here, ≈150 ms after the ref's dip); nothing shuffles. |
+| close | toggle reads lavender ≈3500 → 3620 | ≈3480 | Toggle flips on, folder closes (chips settle down 14pt). |
+| zoomOut | 3950 → ≈4520; Recent visible ≈4167; + ≈4217; header ≈4200–4300 | ≈3990; Recent ≈4117; + ≈4183; header ≈4233–4317 | Home ×1.3 → ×1; header, Recent (two OLD rows) and tab bar fade/focus in. The + fades in with the bar — no morph, no dip. |
+| rowEntry | 4970 → ≈5370 | ≈5033 → 5370 | The new row blur-slides into the top of Recent; old rows move down. |
 
-`FoldTimeline`: push 2000, drop 3040 (0.24 s; the landing fires on its
-completion), close = landing + 130, zoomOut 3990, rowEntry 4920, done 5450.
+Ours = `build/shots/save6a_final.mov` (6A), T0 = first changed frame + 1;
+this host adds ±1–4 frames of jitter between runs (one run's push → drop
+took 1067 ms vs 990 scheduled). `FoldTimeline`: push 2000, pushStep 2510,
+drop 2990 (0.24 s; the landing fires on its completion), countRoll 3080,
+close = landing + 70, zoomOut 3990, rowEntry 4920, done 5450.
 
 To see any moment exactly: `ffmpeg -ss <seconds> -i Reference/reference-walkthrough.mov -frames:v 1 frame.png`,
 or a strip: `ffmpeg -ss 9 -t 3 -i Reference/reference-walkthrough.mov -vf "fps=6,scale=200:-1,tile=9x2" strip.png`.
@@ -543,7 +568,15 @@ camera (presentation ×1.14 vs in-app ×1.30), Home push/zoom, drop behind the
 front panel, one-object icon → chip landing, count/toggle/zoom-out/row
 entry, background fast-forward; the 5A `file()` bridge is gone.
 
-**Step 6 — Polish pass.** Frame-by-frame comparison against the reference
+**Step 6A — Polish: match the reference.** DONE: empty centre slot,
+early count roll, toggle timing, two-step card rise; title width, glyph
+size/weight, toggle label + rim, folder band, picker title offset, picker
+glass. Not changed (measured, see log): tab bar height, Next disc size.
+
+**Step 6B — Robustness** (next). Includes the write-step stall (see
+"Test & screenshot loop").
+
+**Step 6 (remaining) — Polish pass.** Frame-by-frame comparison against the reference
 for every section; tune `Theme.Motion` and geometry only through tokens.
 Reduce Motion path for the whole fold (see Hard rules). VoiceOver pass.
 **SE-size scroll vs tilt:** on iPhone SE (667pt tall) Home is taller than
@@ -624,11 +657,21 @@ at most one frame.
 
 **Re-runs:** `scripts/ui-shots.sh` re-runs every failed test ONCE and prints
 `RETRY: … passed on the second run (flaky)` or `… failed again`; the run
-fails only if a retry fails. **Known simulator stall:** polling the
-accessibility tree (any XCUITest query) while the software keyboard animates
-can freeze the app until XCTest gives up ("Timed out while evaluating UI
-query") — hit in Step 4 and, with `VIDEO=1`, in about half the 5B runs; the
-app itself never stalls outside XCTest (checked by sampling a manual run).
+fails only if a retry fails. **Known stall — the APP spins (corrected in
+6A):** "Timed out while evaluating UI query" on the write step (keyboard up)
+— hit in Step 4, in about half the 5B `VIDEO=1` runs, and in 4 of 16 tests
+of the 6A suite (all passed on retry). A `sample` of the stuck app (6A,
+testWriteAndSave) showed the main thread 100% busy for the whole 3 s inside
+ONE scene safe-area update (`_UISceneSafeAreaClientComponent` →
+`layoutBelowIfNeeded` → SwiftUI render re-flushing transactions), with
+`KeyboardOverlapPadding` (GeometryReader → `bottomEdge` state) and the
+container's `onGeometryChange` reads in the stack: a layout feedback loop.
+The 5B note "app idle when sampled" came from a manual run that didn't hit
+it. Suspects for 6B: state written from geometry during layout in
+`keyboardOverlapPadding`, `statusBarHidden` toggling with `isEditingText`.
+Also: Spotlight indexing of the `build/` videos loaded the host (mds_stores
+≈280% CPU) and made the recorder drop whole phases — `build/` and
+`build/shots/` carry `.metadata_never_index`.
 Tests using `-demoFold` wait ≈4 s (`waitOutDemoKeyboard()`) before their
 first query. Save tests key off `saveInFlight` — an accessibility element
 that exists only while a save is in flight ("Saving note" for VoiceOver).
@@ -737,10 +780,13 @@ with simple fades.
 - [x] Step 4 — 04 Write a chit
 - [x] Step 5A — 05 Save + first half of 06 Fold (timeline, split card, icon lift, -demoFold, Reduce Motion)
 - [x] Step 5B — rest of 06 Fold (push, drop into the folder) + 07 file away + hand-off
-- [ ] Step 6 — Polish, Reduce Motion, VoiceOver
+- [x] Step 6A — Polish: save-sequence fixes (empty slot, count/toggle timing, two-step rise) + visual polish
+- [ ] Step 6B — Robustness (write-step layout stall, …)
+- [ ] Step 6 (rest) — Reduce Motion, VoiceOver, SE scroll vs tilt
 
 Log:
 - (add one line per session: date, what changed, what's still off vs the reference)
+- 2026-09-30 — Step 6A: save — chips vacate the centre slot at `.folded` (push shows 2 chips, nothing crosses the landing chip; shuffling at push start showed the leaving chip); count leads the store from 3080 (roll ≈3033–3167 vs ref 3040–3140), bounce stays on the landing (landing point is for the folder at rest); drop 3040 → 2990, close = landing + 70 (toggle ≈3480 vs 3500); card rises in two steps (`pushStep` 2510, 82%/18%; mean error 9.2 → 4.1pt) — kept. Hand-off re-tracked: swap-frame diff 0.04–0.07 (smallest in window), blue pixels steady. Polish (measured at the reference's resolution): title 34 → 36 (88.0×24.3 → 93.0×25.7 vs 94.0×25.6); glyph 0.32 regular → 0.38 semibold (star radius 5.30 → 5.96 vs 5.96, ink 46 → 80 vs 78); toggle label 17 medium → 19 semibold (44.0 → 50.0pt vs 50.2) + grey rim (edge blue 247 → 238 vs 241); folder front band (profile within 1 level incl. step); picker title +1.5pt (70.6 → 72.3 vs 72.1; grid unchanged 304.6 vs 304.4); picker glass `.vivid` (sat 53.2 → 57.8 vs 58.8). NOT changed: tab bar "4pt higher" — ours already sits 38pt above the screen bottom vs ≈35 in the ref; Next "64pt" — ref Next and FAB both measure 61.3–62.9pt (ours 62). Suite: 12/16 first attempt, 4 write-step tests hit the UI-query stall and passed on retry; sampling showed the APP spinning in a safe-area layout loop (not XCTest) → 6B. Still off: ref folder dips with the count roll, ours bounces at the landing (≈150 ms later); drop ≈60 ms late on the final run (host jitter ±1–4 frames); new row ≈60 ms late; ref's lowest ≈20pt of the front panel 2–4 levels darker; ref toggle ink more muted, knob shadow stronger.
 - 2026-09-30 — Step 5B: camera measured — the reference has a presentation zoom (bezel ×1.14, not built) AND an in-app zoom of Home on the folder (×1.30, not ×1.5). Built push (Home rises from below, zoomed, folder open, old count/chips), drop behind the front panel (FolderShape cutout, shrink 0.86, blur 8), icon → chip hand-off as one object (landing on the drop's completion, `.identity` chip, shape morph, newest chip on top), count roll + bounce, toggle, zoom-out with header/Recent/tab bar, held row entry, background fast-forward; the 5A `file()` bridge is gone. Final video vs reference (ms after tap): Home first visible 2000 vs 2017; card rise 1966 vs 1967; drop 3000 vs 2950; icon lands ≈3250 vs ≈3190; toggle ≈3616 vs ≈3500; Recent/+ back ≈4083–4216 vs ≈4167–4217; new row ≈5050 vs 4970. Found + fixed on video: Canvas mask stalled the first frames ≈0.5 s; screen size came back inset (zoom 50pt high); new chip hidden under the old centre chip for 3 frames; Home's chips visible at push start (rise 308 → 500). Full suite 16/16 first attempt, but the simulator host stalled for minutes in several tests (even a unit test took 459 s). Still off: reference centre slot is empty during the push (ours shows the old centre chip, which shuffles out by spec); count roll ≈100 ms after the reference's (ours waits for the icon); toggle ≈100 ms late; the reference card rises in two steps, ours in one; the + fades in place (ref rides the zoom-out up); flap "ears" still shorter.
 - 2026-09-30 — Step 5A: studied 7.2–11.2 s at 30/60 fps + a per-frame metric pass (the save starts at 7.383 s, not 8.4). FoldPhase/FoldTimeline (one timeline in `RootContainerView.save`), FoldingCardView (two clipped halves, flap toward the viewer, 20% shade, tucks behind past 90°), FoldStage (Animatable overlay: card flight, ONE travelling icon, fold), `.review` ×1.025, `-demoFold`, `-reduceMotion`, Reduce Motion cross-fade, SoftNotesTests pixel diffs (split at rest: max diff 1; hand-off: max 3 outside the icon). Video vs reference (ms after the tap, visible): keyboard gone 233 vs ≈250; lift 433→≈610 vs 467→650; nav/title fade 950→1017 vs 934→1017; Next gone 1017–1067 vs 1050; fold start 1433 vs 1433, edge-on 8 frames in both (per-frame angles within ~3°); flap edges visible ≈100 ms vs ≈130–180. Found + fixed on video: a ghost write card fading behind the flight (opacity animated by the tap's spring). Still off: ref flap edges linger longer and it keeps faint "ears" at the fold-line corners into 06; ref lifted icon sits ≈6pt left of centre (ours centred); ref presentation camera zooms (not app); our settle occasionally drops frames in the simulator recorder; one full-suite run had the pre-existing "Timed out while evaluating UI query" flake in `leaveTextFieldIfFocused` (passes alone).
 - 2026-09-30 — Close-morph probe: + already had `morphTransition`; close is a sequential fade (Next fades in place, then + fades in) — unresolved, documented. PastelTone bases calibrated to the reference picker (rendered within ~4/255; lavender more violet, green more yellow-green). Step 4: NoteCardView/NoteCardContent (posed, single-view content), WriteStep (auto-focus 0.85 s, top→bottom layout flip, status bar + nav hide), KeyboardOverlapPadding (iOS 26 44pt keyboard overlap), 48-char cap, tag chip cycling, real Note → `file(_:)`; paper token corrected to `#FFFDFA`; 10 UI tests pass (one earlier run had two unreproduced "Timed out while evaluating UI query" failures). Still off vs reference: keyboard height differs (ref 412pt, ours 334pt → our title stays on screen while typing); ref Next looks enabled on the empty card (ours disabled by spec); keyboard starts ≈0.5 s later after focus in the simulator; ref header icon/heading a touch larger; card sits ≈4–10pt lower (safe-area difference); icon glyph differs (sun vs sneaker).

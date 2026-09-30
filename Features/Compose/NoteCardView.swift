@@ -8,7 +8,8 @@ enum NoteCardPose {
     case resting
     /// Write step, keyboard up: grown ×1.2 and nearly straight (−1.5°).
     case editing
-    /// Save step: centred and straight.
+    /// Save step: centred, straight, and a touch larger (reference: the
+    /// settled save card measures ≈2.5% bigger than the resting write card).
     case review
 
     var rotation: Angle {
@@ -19,7 +20,13 @@ enum NoteCardPose {
         }
     }
 
-    var scale: CGFloat { self == .editing ? 1.2 : 1 }
+    var scale: CGFloat {
+        switch self {
+        case .resting: 1
+        case .editing: 1.2
+        case .review:  1.025
+        }
+    }
 }
 
 /// The paper card ("chit"), posed. Scale is anchored at the bottom so the card
@@ -53,6 +60,9 @@ struct NoteCardContent<TextArea: View>: View {
     var date: Date
     var tag: String
     var onTagTap: (() -> Void)? = nil
+    /// The fold hides the header icon (keeping its slot) while its own copy
+    /// lifts off the card — one travelling view, no cross-fade.
+    var showsHeaderIcon: Bool = true
     @ViewBuilder var textArea: TextArea
 
     // Geometry measured from the reference (points, 393pt phone).
@@ -65,6 +75,15 @@ struct NoteCardContent<TextArea: View>: View {
     private static var dividerY: CGFloat { 52 }
     /// Decorative rules; the last one is short (≈45% width), as in the reference.
     private static var ruleYs: [CGFloat] { [118, 148, 178, 208] }
+    private static var headerLeading: CGFloat { inset - 2 }
+    private static var headerTop: CGFloat { 13 }
+    static var headerIconSize: CGFloat { 32 }
+    static var headerIconGlow: CGFloat { 0.5 }
+    /// Centre of the header icon in card coordinates (the header row is the
+    /// icon's height — its two text lines are shorter).
+    static var headerIconCenter: CGPoint {
+        CGPoint(x: headerLeading + headerIconSize / 2, y: headerTop + headerIconSize / 2)
+    }
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
@@ -92,8 +111,8 @@ struct NoteCardContent<TextArea: View>: View {
             .allowsHitTesting(false)
 
             header
-                .padding(.leading, Self.inset - 2)
-                .padding(.top, 13)
+                .padding(.leading, Self.headerLeading)
+                .padding(.top, Self.headerTop)
 
             textArea
                 .frame(width: Self.size.width - Self.inset * 2, alignment: .topLeading)
@@ -109,7 +128,9 @@ struct NoteCardContent<TextArea: View>: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            StackedIconView(icon: icon, size: 32, shapeOverride: .squircle, glow: 0.5)
+            StackedIconView(icon: icon, size: Self.headerIconSize, shapeOverride: .squircle,
+                            glow: Self.headerIconGlow)
+                .opacity(showsHeaderIcon ? 1 : 0)
             VStack(alignment: .leading, spacing: 1) {
                 Text(NoteCardFormat.heading(for: date))
                     .font(.softNoteHeading)
@@ -170,8 +191,10 @@ enum NoteCardFormat {
 
 extension NoteCardContent where TextArea == NoteCardStaticText {
     /// Read-only card (Save / Fold): shows `text` in the text area.
-    init(icon: NoteIcon, date: Date, tag: String, text: String) {
-        self.init(icon: icon, date: date, tag: tag) { NoteCardStaticText(text: text) }
+    init(icon: NoteIcon, date: Date, tag: String, text: String, showsHeaderIcon: Bool = true) {
+        self.init(icon: icon, date: date, tag: tag, showsHeaderIcon: showsHeaderIcon) {
+            NoteCardStaticText(text: text)
+        }
     }
 }
 

@@ -89,6 +89,26 @@ enum Theme {
         /// Layout that follows the software keyboard (write step). Close to
         /// the keyboard's own ~0.35 s curve, so the card and keys move together.
         static let keyboard = Animation.spring(duration: 0.4, bounce: 0)
+
+        // 05 Save / 06 Fold — measured at 60 fps (see `FoldTimeline`).
+        /// The card flying from the write step to the centre, straightening
+        /// and un-growing while the keyboard drops (≈0.35 s, no overshoot).
+        static let settle = Animation.spring(duration: 0.35, bounce: 0)
+        /// The icon lifting off the card header onto the card's top edge
+        /// (≈0.24 s, fast start, ~1pt overshoot).
+        static let lift = Animation.spring(duration: 0.28, bounce: 0.12)
+        /// Nav bar and title blurring away (≈0.2 s).
+        static let clear = Animation.easeIn(duration: 0.2)
+        /// Next dropping off the bottom edge (reference ≈0.15 s).
+        static let drop = Animation.easeIn(duration: 0.18)
+        /// The top half folding over the centre line. Reference: edge-on after
+        /// ≈133 ms (~11° per 60 fps frame), then a slower second half — the
+        /// flap's flared edges stay visible ≈130–180 ms. Near-linear to 90°,
+        /// then easing out (measured on video: 0.25 s linear-ish was ~25% too
+        /// fast into edge-on and hid the edges after ~50 ms).
+        static let fold = Animation.timingCurve(0.3, 0.2, 0.5, 0.95, duration: 0.36)
+        /// Reduce Motion stand-in for the whole save → fold → file sequence.
+        static let crossFade = Animation.easeInOut(duration: 0.25)
     }
 }
 

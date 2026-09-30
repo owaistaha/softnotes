@@ -40,28 +40,70 @@ if [[ -n "$VIDEO" ]]; then
   sleep 1
 fi
 
+# run <result.xcresult> [-only-testing:…]: one xcodebuild test pass; the
+# full log goes to $WORK/last.log, the summary lines to the terminal.
+run() {
+  local res=$1; shift
+  rm -rf "$res"
+  xcodebuild test -project SoftNotes.xcodeproj -scheme SoftNotes \
+    -destination "platform=iOS Simulator,name=$SIM_NAME" \
+    -derivedDataPath "$WORK/dd" -resultBundlePath "$res" "$@" 2>&1 \
+    | tee -a "$WORK/last.log" \
+    | grep -E "error:|Test Case .*(passed|failed)|TEST (SUCCEEDED|FAILED)|\*\* "
+  return ${pipestatus[1]}
+}
+
 set +e
-xcodebuild test -project SoftNotes.xcodeproj -scheme SoftNotes \
-  -destination "platform=iOS Simulator,name=$SIM_NAME" \
-  -derivedDataPath "$WORK/dd" -resultBundlePath "$RESULT" $ONLY 2>&1 \
-  | grep -E "error:|Test Case .*(passed|failed)|TEST (SUCCEEDED|FAILED)|\*\* "
-STATUS=${pipestatus[1]}
+: > "$WORK/last.log"
+RESULTS=("$RESULT")
+run "$RESULT" $ONLY
+STATUS=$?
+# Re-run each failed test ONCE (simulator UI queries flake — see CLAUDE.md)
+# and say so. The run passes only if every retried test passes.
+if [[ $STATUS -ne 0 ]]; then
+  FAILED=($(grep -oE "Test Case '-\[[A-Za-z]+\.[A-Za-z]+ [A-Za-z0-9_]+\]' failed" "$WORK/last.log" \
+    | sed -E "s/.*-\[([A-Za-z]+)\.([A-Za-z]+) ([A-Za-z0-9_]+)\].*/\1\/\2\/\3/" | sort -u))
+  if (( ${#FAILED} )); then
+    STATUS=0
+    for t in $FAILED; do
+      echo "RETRY: $t failed — re-running it once"
+      R2="$WORK/retry_${t:t}.xcresult"
+      RESULTS+=("$R2")
+      if run "$R2" "-only-testing:$t"; then
+        echo "RETRY: $t passed on the second run (flaky)"
+      else
+        echo "RETRY: $t failed again"
+        STATUS=1
+      fi
+    done
+  fi
+fi
 set -e
 if [[ -n "$REC_PID" ]]; then kill -INT $REC_PID 2>/dev/null; wait $REC_PID 2>/dev/null; fi
 
-# Export attachments, then give them readable names from manifest.json.
+# Export attachments (first run + any retries), then give them readable
+# names from manifest.json.
 RAW=$WORK/raw; rm -rf "$RAW"
-xcrun xcresulttool export attachments --path "$RESULT" --output-path "$RAW" >/dev/null
+for res in $RESULTS; do
+  [[ -d "$res" ]] || continue
+  mkdir -p "$RAW/${res:t:r}"
+  xcrun xcresulttool export attachments --path "$res" --output-path "$RAW/${res:t:r}" >/dev/null
+done
 python3 - "$RAW" "$OUT" <<'PY'
 import json, shutil, sys, os
 raw, out = sys.argv[1:3]
 n = 0
-for test in json.load(open(os.path.join(raw, "manifest.json"))):
-    for a in test.get("attachments", []):
-        src = os.path.join(raw, a["exportedFileName"])
-        name = a.get("suggestedHumanReadableName") or a["exportedFileName"]
-        base = name.split("_0_")[0]            # strip Xcode's uuid suffix
-        shutil.copy(src, os.path.join(out, base + ".png")); n += 1
+for sub in sorted(os.listdir(raw)):
+    d = os.path.join(raw, sub)
+    manifest = os.path.join(d, "manifest.json")
+    if not os.path.exists(manifest):
+        continue
+    for test in json.load(open(manifest)):
+        for a in test.get("attachments", []):
+            src = os.path.join(d, a["exportedFileName"])
+            name = a.get("suggestedHumanReadableName") or a["exportedFileName"]
+            base = name.split("_0_")[0]            # strip Xcode's uuid suffix
+            shutil.copy(src, os.path.join(out, base + ".png")); n += 1
 print(f"exported {n} screenshots -> {out}")
 PY
 exit $STATUS

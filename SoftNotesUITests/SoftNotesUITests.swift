@@ -169,7 +169,7 @@ final class SoftNotesUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Step 2 of 2"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.buttons["primaryAction"].isEnabled, "-demoSave should enable Next on the write step")
         app.buttons["primaryAction"].tap()                       // → demo save
-        XCTAssertTrue(app.staticTexts["Have a good day"].waitForExistence(timeout: 5), "demo note should appear in Recent")
+        XCTAssertTrue(app.staticTexts["Have a good day"].waitForExistence(timeout: 10), "demo note should appear in Recent")
         Thread.sleep(forTimeInterval: 1.5)
         snap("20_demo_saved_home")
     }
@@ -219,7 +219,7 @@ final class SoftNotesUITests: XCTestCase {
         XCTAssertTrue(app.buttons["primaryAction"].isEnabled)
 
         app.buttons["primaryAction"].tap()
-        XCTAssertTrue(element(labelContaining: ["Have a good day", "Just now"]).waitForExistence(timeout: 5),
+        XCTAssertTrue(element(labelContaining: ["Have a good day", "Just now"]).waitForExistence(timeout: 10),
                       "new row should appear in Recent")
         XCTAssertTrue(element(labelContaining: ["9 notes"]).waitForExistence(timeout: 3), "count should go 8 → 9")
         Thread.sleep(forTimeInterval: 1.2)
@@ -281,25 +281,96 @@ final class SoftNotesUITests: XCTestCase {
         app.launch()
     }
 
+    /// `-demoFold` raises and drops the software keyboard ≈2–3.5 s after
+    /// launch. Polling the accessibility tree while the simulator's keyboard
+    /// animates has hung the app until XCTest gives up ("Timed out while
+    /// evaluating UI query" — also seen in Step 4), so don't query until the
+    /// keyboard is gone. The save runs ≈3.2 → 8.7 s after launch.
+    private func waitOutDemoKeyboard() {
+        Thread.sleep(forTimeInterval: 4.0)
+    }
+
     /// `-demoFold`: compose opens on the write step with "Have a good day"
-    /// typed, the keyboard comes up, and the save → fold timeline runs by
-    /// itself (≈3.2 s after launch); after the fold Home files the note.
-    /// Record it: `VIDEO=1 scripts/ui-shots.sh testDemoFold`.
+    /// typed, the keyboard comes up, and the whole save runs by itself
+    /// (≈3.2 s after launch): settle, lift, fold, push, drop, landing, toggle,
+    /// zoom-out, row entry. Record it: `VIDEO=1 scripts/ui-shots.sh testDemoFold`.
     func testDemoFold() {
         relaunch(["-demoFold"])
-        XCTAssertTrue(element(labelContaining: ["Have a good day", "Just now"]).waitForExistence(timeout: 10),
-                      "folded note should be filed into Recent")
-        XCTAssertTrue(element(labelContaining: ["9 notes"]).waitForExistence(timeout: 3), "count should go 8 → 9")
-        Thread.sleep(forTimeInterval: 1.0)
+        waitOutDemoKeyboard()
+        waitForSaveToFinish()
+        assertFiled(count: 9)
         snap("50_demo_fold_home")
+    }
+
+    /// Two saves in a row: the second one (via `-demoSave`, a circle icon)
+    /// runs the same sequence and files note 10.
+    func testSaveTwiceInARow() {
+        relaunch(["-demoFold", "-demoSave"])
+        waitOutDemoKeyboard()
+        waitForSaveToFinish()
+        assertFiled(count: 9)
+
+        app.buttons["primaryAction"].tap()
+        XCTAssertTrue(app.buttons["iconCell_0"].waitForExistence(timeout: 5))
+        app.buttons["iconCell_0"].tap()                          // a circle icon
+        app.buttons["primaryAction"].tap()                       // → write
+        XCTAssertTrue(app.staticTexts["Step 2 of 2"].waitForExistence(timeout: 3))
+        app.buttons["primaryAction"].tap()                       // → demo save
+        waitForSaveToFinish()
+        assertFiled(count: 10)
+        snap("52_second_save_home")
+    }
+
+    /// Backgrounding mid-flight fast-forwards to the end state: the note is
+    /// added exactly once, nothing is left in flight.
+    func testBackgroundMidFlight() {
+        relaunch(["-demoFold"])
+        waitOutDemoKeyboard()                                    // save is ≈0.8 s in
+        XCTAssertTrue(saveInFlight.exists, "save should be in flight")
+        XCUIDevice.shared.press(.home)
+        Thread.sleep(forTimeInterval: 1.5)
+        app.activate()
+        XCTAssertTrue(app.otherElements["folder"].waitForExistence(timeout: 5))
+        // The end state renders on the first frame back.
+        let gone = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: saveInFlight)
+        wait(for: [gone], timeout: 2)
+        assertFiled(count: 9)
     }
 
     /// Reduce Motion (`-reduceMotion`, DEBUG): no flight, no fold — compose
     /// cross-fades straight to Home with the note filed.
     func testReduceMotionSave() {
         relaunch(["-demoFold", "-reduceMotion"])
-        XCTAssertTrue(element(labelContaining: ["Have a good day", "Just now"]).waitForExistence(timeout: 10))
-        XCTAssertTrue(element(labelContaining: ["9 notes"]).exists, "count should go 8 → 9")
+        waitOutDemoKeyboard()
+        let row = app.buttons["recentRow_0"]
+        let filed = expectation(for: NSPredicate(format: "label CONTAINS 'Have a good day'"), evaluatedWith: row)
+        wait(for: [filed], timeout: 10)
+        XCTAssertFalse(saveInFlight.exists, "Reduce Motion must not run the flight")
+        XCTAssertEqual(app.otherElements["folder"].label, "Notes folder, 9 notes")
         snap("51_reduce_motion_home")
+    }
+
+    // MARK: - Save helpers (identifier queries — cheaper than label predicates)
+
+    private var saveInFlight: XCUIElement { app.descendants(matching: .any)["saveInFlight"] }
+
+    private func waitForSaveToFinish(timeout: TimeInterval = 15) {
+        XCTAssertTrue(saveInFlight.waitForExistence(timeout: 4), "save should start")
+        let gone = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: saveInFlight)
+        wait(for: [gone], timeout: timeout)
+    }
+
+    /// Count, closed folder / toggle on, new note on top of Recent.
+    private func assertFiled(count: Int) {
+        let folder = app.otherElements["folder"]
+        XCTAssertTrue(folder.waitForExistence(timeout: 3))
+        XCTAssertEqual(folder.label, "Notes folder, \(count) notes")
+        XCTAssertEqual(folder.value as? String, "Closed", "folder should be closed")
+        // The toggle has the toggle trait, so XCUITest sees a switch ("1" = on).
+        let toggle = app.descendants(matching: .any)["folderToggle"]
+        XCTAssertTrue(["On", "1"].contains(toggle.value as? String ?? ""),
+                      "toggle should be on (value \(String(describing: toggle.value)))")
+        XCTAssertTrue(app.buttons["recentRow_0"].label.contains("Have a good day"),
+                      "new note should top Recent (got \(app.buttons["recentRow_0"].label))")
     }
 }

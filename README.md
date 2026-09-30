@@ -43,7 +43,7 @@ scripts/                         ui-shots.sh, video-disc-track.py, video-ring-tr
 | Tab track | `#E7E6E8`, inner shadow |
 | Ink / FAB | `#17161A` |
 | Toggle on | `#E2DAFF` bg, `#7B6FE0` text; 116 × 46 pt, 40 pt knob |
-| Pastels (back tile) | pink `#FD84A6`, blue `#6CABFD`, lavender `#9087FD` (+ orange, green, yellow, indigo from the picker grid) |
+| Pastels (back tile) | pink `#F77696`, blue `#5A9AF6`, lavender `#9E81F6`, orange `#FB9A4B`, green `#63C36C`, yellow `#FFBF55`, indigo `#837AF1` (calibrated to the reference picker) |
 | Note paper | `#FBF8EE` |
 | Progress arc | amber `#F5B74A` |
 | Folder | 235 × 174 pt front (25 pt tab, flat top to 0.38 of width + 27 pt curve), back panel 221 pt, chips 48 pt, count bubble 46 pt |

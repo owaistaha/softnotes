@@ -253,7 +253,7 @@ Key invariants:
 | Paper (note card) | `#FBF8EE` |
 | Hairline (count bubble edge) | black @ 6% |
 | Progress arc on Next button | amber `#F5B74A` |
-| Pastel tones (base / light) | lavender `#9087FD/#CBC6F7`, pink `#FD84A6/#F8C2D2`, blue `#6CABFD/#B3D2FC`, orange `#FFA962/#FFD6B0`, green `#6ED39A/#BDEBD0`, yellow `#FFCF5C/#FFE7A8`, indigo `#7E80F7/#C4C5FB` |
+| Pastel tones (base / light) | lavender `#9E81F6/#CBC6F7`, pink `#F77696/#F8C2D2`, blue `#5A9AF6/#B3D2FC`, orange `#FB9A4B/#FFD6B0`, green `#63C36C/#BDEBD0`, yellow `#FFBF55/#FFE7A8`, indigo `#837AF1/#C4C5FB` — bases calibrated so the *rendered* back tile matches the reference picker (4.1 s) within ~4/255. The reference also has a coral (`≈#FA9471` rendered: target, cup) and a cyan-blue (cloud) we don't model. |
 
 Metrics (`Theme.Metrics`): text inset (`screenPadding`) 20 · row/list inset
 (`listInset`) 16 — rows run wider than header text · row 58 tall, 6 gap, icon

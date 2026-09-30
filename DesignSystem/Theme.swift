@@ -93,16 +93,19 @@ enum PastelTone: String, CaseIterable, Codable, Identifiable, Hashable {
 
     var id: String { rawValue }
 
-    /// Saturated back tile.
+    /// Saturated back tile. Calibrated against the reference picker (4.1 s):
+    /// each value = previous token + (reference rendered − ours rendered),
+    /// sampled on the back tile's uncovered band. Lavender turns more violet
+    /// and green more yellow-green; the rest deepen.
     var base: Color {
         switch self {
-        case .lavender: Color(hex: 0x9087FD)
-        case .pink:     Color(hex: 0xFD84A6)
-        case .blue:     Color(hex: 0x6CABFD)
-        case .orange:   Color(hex: 0xFFA962)
-        case .green:    Color(hex: 0x6ED39A)
-        case .yellow:   Color(hex: 0xFFCF5C)
-        case .indigo:   Color(hex: 0x7E80F7)
+        case .lavender: Color(hex: 0x9E81F6)
+        case .pink:     Color(hex: 0xF77696)
+        case .blue:     Color(hex: 0x5A9AF6)
+        case .orange:   Color(hex: 0xFB9A4B)
+        case .green:    Color(hex: 0x63C36C)
+        case .yellow:   Color(hex: 0xFFBF55)
+        case .indigo:   Color(hex: 0x837AF1)
         }
     }
 

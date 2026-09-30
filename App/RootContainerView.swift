@@ -121,10 +121,6 @@ struct RootContainerView: View {
                 onClose: cancelComposing,
                 onSave: save
             )
-            // One source of truth for the keyboard: compose is laid out as if
-            // there were none, and `keyboardOverlapPadding()` inside it pads
-            // by UIKit's keyboard frame (see KeyboardOverlapPadding).
-            .ignoresSafeArea(.keyboard)
             .zIndex(1)
 
             // Always mounted: it animates its own progress values (see FoldStage).
@@ -162,6 +158,25 @@ struct RootContainerView: View {
         }
         #endif
         #if DEBUG
+        .background {
+            // `-keyboardCycles`: log SwiftUI's keyboard safe-area edge next to
+            // UIKit's keyboard top (the discrepancy KeyboardOverlapPadding
+            // exists for; measured per iOS version).
+            if ProcessInfo.processInfo.arguments.contains("-keyboardCycles") {
+                GeometryReader { proxy in
+                    Color.clear
+                        .onChange(of: proxy.frame(in: .global).maxY.rounded(), initial: true) { _, maxY in
+                            print("KEYBOARD PROBE: SwiftUI safe-area bottom \(maxY)")
+                        }
+                }
+                    .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { note in
+                        let frame = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect) ?? .zero
+                        let duration = note.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] ?? "-"
+                        let curve = note.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] ?? "-"
+                        print("KEYBOARD PROBE: UIKit keyboard top \(frame.minY) duration \(duration) curve \(curve) t=\(MainThreadWatchdog.clock())")
+                    }
+            }
+        }
         .overlay(alignment: .topLeading) {
             if let keyboardCycleReport {
                 Color.clear.frame(width: 1, height: 1)

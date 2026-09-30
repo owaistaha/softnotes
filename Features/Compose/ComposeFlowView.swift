@@ -89,9 +89,11 @@ struct ComposeFlowView: View {
 
     private var isClearing: Bool { foldPhase >= .clear }
 
-    /// Next sits 4pt above the home indicator area normally, and ≈22pt above
-    /// the keyboard while typing (reference: centre 58pt above the keys).
-    private var nextBottomGap: CGFloat { draft.isEditingText ? 22 : 4 }
+    /// Next sits 4pt above the home indicator area normally, and 17pt above
+    /// the keyboard while typing: its centre ≈55pt above the keys' visible
+    /// top, as in the reference. (Was 22 while the keyboard padding
+    /// overflowed and shifted the layout — see KeyboardOverlapPadding.)
+    private var nextBottomGap: CGFloat { draft.isEditingText ? 17 : 4 }
     /// Reference: ≈17pt between the (grown) card and the Next halo.
     private static let cardToNextGap: CGFloat = 17
 

@@ -32,6 +32,10 @@ Features/
   Compose/WriteStep.swift        04 Write a chit
   Compose/NoteCardView.swift     the paper card (pose + single-view content)
   Compose/KeyboardOverlapPadding.swift  iOS 26 keyboard safe-area fix
+  Compose/FoldTimeline.swift     05/06 phases + measured timings (ms after the Next tap)
+  Compose/FoldingCardView.swift  the card as two halves; the top half folds over the centre line
+  Compose/FoldStage.swift        save/fold overlay: card flight, travelling icon, fold
+SoftNotesTests/                  unit tests (pixel diffs of the fold)
 SoftNotesUITests/                UI tests + screenshot/video tooling (see CLAUDE.md)
 scripts/                         ui-shots.sh, video-disc-track.py, video-ring-track.py, fab-morph-stats.py
 ```
@@ -59,13 +63,12 @@ scripts/                         ui-shots.sh, video-disc-track.py, video-ring-tr
 - **Tab switch** — white pill slides via `matchedGeometryEffect`; inactive icon desaturates; content swaps with a blur-fade.
 - **FAB → Next** — the `+` morphs into the compose flow's `→` button (shared `flowNamespace`); tab track drops away, Home recedes (scale 0.94 + blur).
 - **Folder** — drag to tilt in 3D (springs back), chips parallax and idle-float, toggle opens/closes the front panel on a bottom hinge.
+- **Save → fold (05, first half of 06)** — keyboard drops, the card flies to the centre and straightens, the icon lifts onto its top edge, nav/title/Next leave, the top half folds over the centre line (shading, tucks behind). Timings match the reference within ~35 ms; Reduce Motion replaces it with a 0.25 s cross-fade.
 - **Save (Home side)** — folder opens → chip drops into the centre slot, count rolls 8 → 9, folder bounces, new row focus-pulls into Recent → toggle flips on. Success haptic.
 
-## Reference choreography for the next step (05 Save → 06 Fold → 07 File it away)
+## Reference choreography for the next step (rest of 06 Fold → 07 File it away)
 
-Observed in the recording, roughly 3 s end to end:
-1. Tap Next on the written card → nav/title fade out; the chosen icon rises and sits on the card's top edge.
-2. The card's top half folds down over the bottom half (x-axis rotation with shading on the flap) → a half-height card.
+Steps 1–2 (save, fold) are built; still to do:
 3. Camera pushes toward the bottom: the folder rises into view, large; the folded card drops behind the front panel with a blur.
 4. The icon lands in the centre chip slot; count 8 → 9; ~0.3 s later the toggle flips on.
 5. Zoom out to Home; the new row slides in at the top of Recent.

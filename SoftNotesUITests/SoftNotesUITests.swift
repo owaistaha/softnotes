@@ -361,6 +361,53 @@ final class SoftNotesUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 1.5)
     }
 
+    /// VoiceOver: labels, traits and order on Home, the picker and the
+    /// write step. (The "Note saved. N notes." announcement can't be
+    /// observed from XCUITest; it is posted in RootContainerView.)
+    func testAccessibilityLabels() {
+        // Home
+        XCTAssertEqual(app.otherElements["folder"].label, "Notes folder, 8 notes")
+        let toggle = app.switches["folderToggle"]
+        XCTAssertTrue(toggle.exists, "the Notes toggle should read as a switch")
+        XCTAssertEqual(toggle.label, "Notes")
+        XCTAssertTrue(app.buttons["Search notes"].exists)
+        XCTAssertTrue(app.buttons["Home"].isSelected)
+        XCTAssertTrue(app.buttons["Saved"].exists)
+        XCTAssertEqual(app.buttons["primaryAction"].label, "New note")
+        let row = app.buttons["recentRow_0"]
+        XCTAssertTrue(row.exists)
+        XCTAssertTrue(row.label.hasPrefix("Buy fresh cherries, "), "row reads '<title>, <time>': \(row.label)")
+        snap("70_a11y_home")
+        XCTAssertEqual(row.label.components(separatedBy: ", ").count, 2, "nothing else in the row label: \(row.label)")
+
+        // Picker: 12 buttons, named, in reading order, the selected one marked.
+        app.buttons["primaryAction"].tap()
+        XCTAssertTrue(app.buttons["iconCell_11"].waitForExistence(timeout: 5))
+        let cells = (0..<12).map { app.buttons["iconCell_\($0)"] }
+        XCTAssertEqual(cells.map(\.label), ["Smiling face", "Basket", "Paper plane", "Flame",
+                                             "Sun", "Cup and saucer", "Leaf", "Heart",
+                                             "Water drop", "Book", "Walking person", "Star"])
+        let frames = cells.map(\.frame)
+        for i in 1..<12 {
+            let a = frames[i - 1], b = frames[i]
+            XCTAssertTrue(b.minY > a.minY + 1 || (abs(b.minY - a.minY) <= 1 && b.minX > a.minX),
+                          "cell \(i) should follow cell \(i - 1) in reading order")
+        }
+        XCTAssertTrue(cells[4].isSelected)
+        XCTAssertEqual(cells.filter(\.isSelected).count, 1)
+        XCTAssertEqual(app.otherElements["iconPreview"].label, "Selected icon: Sun")
+        XCTAssertEqual(app.buttons["primaryAction"].label, "Next")
+        snap("71_a11y_picker")
+
+        // Write step
+        app.buttons["primaryAction"].tap()
+        XCTAssertTrue(noteText.waitForExistence(timeout: 5))
+        XCTAssertEqual(noteText.label, "Note")
+        XCTAssertEqual(app.buttons["tagChip"].label, "Tag: Daily")
+        Thread.sleep(forTimeInterval: 1.5)
+        snap("72_a11y_write")
+    }
+
     // MARK: - Step 5A (save + fold)
 
     private func relaunch(_ arguments: [String]) {

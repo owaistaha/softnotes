@@ -121,6 +121,8 @@ struct WriteStep: View {
             .lineLimit(NoteCardContent<EmptyView>.maxLines)
             .submitLabel(.done)
             .focused($isFocused)
+            .accessibilityLabel("Note")
+            .accessibilityHint("Up to \(ComposeDraft.maxTextLength) characters. Return when done.")
             .accessibilityIdentifier("noteText")
         })
         // Where the fold starts from (layout frame; the pose is re-applied there).

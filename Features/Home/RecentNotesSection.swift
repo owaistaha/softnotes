@@ -91,7 +91,10 @@ struct NoteRow: View {
                 withAnimation(Theme.Motion.smooth) { store.delete(note.id) }
             }
         }
-        .accessibilityElement(children: .combine)
+        // One element: "<title>, <relative time>", a button (no chevron).
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(note.title), \(note.createdAt.softRelative(to: .now))")
+        .accessibilityAddTraits(.isButton)
         .accessibilityHint("Opens the note")
     }
 }

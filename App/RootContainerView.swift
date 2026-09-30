@@ -379,6 +379,7 @@ struct RootContainerView: View {
                     foldCard = nil
                     foldPhase = .landed
                 }
+                announceFiled()
                 try await clock.sleep(for: .milliseconds(FoldTimeline.closeAfterLanding))
                 withAnimation(Theme.Motion.snappy) {
                     isFolderOpen = false
@@ -415,7 +416,7 @@ struct RootContainerView: View {
         var instantly = Transaction()
         instantly.disablesAnimations = true
         withTransaction(instantly) {
-            if let note = pendingNote { store.add(note) }
+            if let note = pendingNote { store.add(note); announceFiled() }
             pendingNote = nil
             countLead = 0
             selectedTab = .home
@@ -430,6 +431,12 @@ struct RootContainerView: View {
         }
     }
 
+    /// VoiceOver: one announcement when a note is filed, with the new count.
+    private func announceFiled() {
+        let count = store.count
+        AccessibilityNotification.Announcement("Note saved. \(count) \(count == 1 ? "note" : "notes").").post()
+    }
+
     /// Reduce Motion: no flight, no fold — compose cross-fades to Home and the
     /// note is simply there (the count still rolls).
     private func fileWithCrossFade(_ note: Note) {
@@ -439,6 +446,7 @@ struct RootContainerView: View {
             isComposing = false
             store.add(note)
         }
+        announceFiled()
     }
 }
 

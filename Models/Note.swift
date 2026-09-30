@@ -11,11 +11,20 @@ struct NoteIcon: Codable, Hashable, Identifiable {
 
     var id: String { "\(symbol)-\(tone.rawValue)" }
 
-    /// VoiceOver / UI-test name, derived from the symbol ("cup.and.saucer" → "Cup and saucer").
+    /// VoiceOver name. Spoken names for the library's symbols (the raw
+    /// symbol name reads as "Sun max", "Figure walk"); anything else falls
+    /// back to the symbol ("cup.and.saucer" → "Cup and saucer").
     var accessibilityName: String {
+        if let name = Self.spokenNames[symbol] { return name }
         let words = symbol.split(separator: ".").joined(separator: " ")
         return words.prefix(1).uppercased() + words.dropFirst()
     }
+
+    private static let spokenNames: [String: String] = [
+        "face.smiling": "Smiling face", "sun.max": "Sun", "paperplane": "Paper plane",
+        "book.closed": "Book", "figure.walk": "Walking person", "drop": "Water drop",
+        "house": "Home", "heart": "Heart",
+    ]
 }
 
 extension NoteIcon {

@@ -157,7 +157,7 @@ struct NoteCardContent<TextArea: View>: View {
             Button(action: onTagTap) { label }
                 .buttonStyle(.pressable(scale: 0.92))
                 .accessibilityLabel("Tag: \(tag)")
-                .accessibilityHint("Changes the tag")
+                .accessibilityHint("Cycles to the next tag: Daily, Work, Errands, Ideas")
                 .accessibilityIdentifier("tagChip")
         } else {
             label

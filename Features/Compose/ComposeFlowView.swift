@@ -1,54 +1,115 @@
 import SwiftUI
 
-/// STUB for 03_Pick_an_icon → 04_Write_a_chit → 05_Save → 06_Fold.
+/// The compose flow's shell: nav bar + the current step + the Next button.
 ///
-/// What's real already:
-/// • The nav bar ("New note / Step 1 of 3", back + close).
-/// • The Next button, which is the Home FAB morphed via matched geometry,
-///   with the amber step-progress arc.
-/// • `folderFrame` — where the fold animation must land on Home.
-///
-/// Tapping Next currently files a demo note so you can watch the Home side
-/// of the choreography (row insert, chip shuffle, count roll, toggle flip).
+/// • Each step is its own view, swapped with `.blurFade`.
+/// • The nav bar and Next button live here (not in the steps) so they persist
+///   across steps; Next's amber arc advances 1/3 → 2/3.
+/// • The Next button is the Home FAB morphed via matched geometry. It is kept
+///   *outside* the blur-fading content and uses `.identity` transitions (as
+///   does the FAB), so the black disc glides solid instead of dissolving.
+/// • This view stays in the hierarchy permanently; `isPresented` toggles its
+///   contents, which lets the button match-move with the FAB in one transaction.
 struct ComposeFlowView: View {
     let flowNamespace: Namespace.ID
-    /// Global frame of the Home folder card — the fold animation's target.
+    /// Global frame of the Home folder card — the fold animation's target (Step 5).
     let folderFrame: CGRect
+    let draft: ComposeDraft
+    let isPresented: Bool
     var onClose: () -> Void
     var onSave: (Note) -> Void
 
-    @State private var step = 1
-    private let totalSteps = 3
-
     var body: some View {
-        VStack(spacing: 0) {
-            ComposeNavBar(step: step, totalSteps: totalSteps, onBack: onClose, onClose: onClose)
+        ZStack {
+            if isPresented {
+                VStack(spacing: 0) {
+                    ComposeNavBar(
+                        step: draft.visibleStepNumber,
+                        totalSteps: ComposeDraft.visibleStepCount,
+                        onBack: back,
+                        onClose: onClose
+                    )
 
-            Text("Select an icon\nfor your note")
-                .font(.softTitle)
-                .tracking(-0.4)
-                .multilineTextAlignment(.center)
-                .foregroundStyle(Theme.Palette.ink)
-                .padding(.top, 24)
+                    ZStack {
+                        switch draft.step {
+                        case .pickIcon:
+                            IconPickerStep(draft: draft).transition(.blurFade)
+                        case .write, .save:
+                            WriteStep(draft: draft).transition(.blurFade)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
-            Spacer()
+                    // Room for the Next button, which is drawn in its own layer below.
+                    Color.clear.frame(height: PrimaryActionButton.outerDiameter + 4)
+                }
+                .padding(.horizontal, Theme.Metrics.screenPadding)
+                .transition(.blurFade)
 
-            Text("Icon picker & note card coming next")
-                .font(.softCaption)
-                .foregroundStyle(Theme.Palette.inkTertiary)
-
-            Spacer()
-
-            PrimaryActionButton(
-                symbol: "arrow.right",
-                progress: Double(step) / Double(totalSteps),
-                accessibilityLabel: "Next",
-                action: { onSave(.demo()) }
-            )
-            .matchedGeometryEffect(id: FlowID.primaryAction, in: flowNamespace)
-            .padding(.bottom, 12)
+                VStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    PrimaryActionButton(
+                        symbol: "arrow.right",
+                        progress: draft.progress,
+                        haloFill: Theme.Palette.surface,
+                        accessibilityLabel: "Next",
+                        action: next
+                    )
+                    .disabled(!nextEnabled)
+                    .opacity(nextEnabled ? 1 : 0.35)
+                    .animation(Theme.Motion.snappy, value: nextEnabled)
+                    .matchedGeometryEffect(id: FlowID.primaryAction, in: flowNamespace)
+                    .padding(.bottom, 4)
+                }
+                // See `PrimaryActionButton.morphTransition` — must sit on the
+                // view that is actually inserted/removed (this container).
+                .transition(PrimaryActionButton.morphTransition)
+            }
         }
-        .padding(.horizontal, Theme.Metrics.screenPadding)
+        .allowsHitTesting(isPresented)
+    }
+
+    // MARK: - Actions
+
+    private func back() {
+        if draft.step == .pickIcon {
+            onClose()                                   // Back on step 1 closes the flow
+        } else {
+            withAnimation(Theme.Motion.smooth) { _ = draft.goBack() }
+        }
+    }
+
+    private func next() {
+        switch draft.step {
+        case .pickIcon:
+            withAnimation(Theme.Motion.smooth) { _ = draft.advance() }
+        case .write:
+            // Step 5 replaces this with the real save → fold → file-away.
+            if Self.demoSaveEnabled { onSave(demoNote()) }
+        case .save:
+            break
+        }
+    }
+
+    private var nextEnabled: Bool {
+        draft.step == .write ? (draft.canAdvance || Self.demoSaveEnabled) : draft.canAdvance
+    }
+
+    /// DEBUG-only launch argument `-demoSave`: Next on the write step files a
+    /// demo note (with the icon picked in step 1) so Home's save choreography
+    /// can still be exercised before the real fold exists.
+    private static var demoSaveEnabled: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.arguments.contains("-demoSave")
+        #else
+        false
+        #endif
+    }
+
+    private func demoNote() -> Note {
+        var note = Note.demo()
+        note.icon = draft.icon
+        return note
     }
 }
 
@@ -62,7 +123,8 @@ struct ComposeNavBar: View {
 
     var body: some View {
         HStack {
-            circleButton("chevron.left", label: "Back", id: "composeBack", action: onBack)
+            // Back is a raised white disc, close a flat grey one (per reference).
+            circleButton("chevron.left", label: "Back", id: "composeBack", raised: true, action: onBack)
             Spacer()
             VStack(spacing: 2) {
                 Text("New note")
@@ -74,21 +136,37 @@ struct ComposeNavBar: View {
                     .contentTransition(.numericText(value: Double(step)))
             }
             Spacer()
-            circleButton("xmark", label: "Close", id: "composeClose", action: onClose)
+            circleButton("xmark", label: "Close", id: "composeClose", raised: false, action: onClose)
         }
-        .padding(.top, 4)
     }
 
-    private func circleButton(_ symbol: String, label: String, id: String, action: @escaping () -> Void) -> some View {
+    private func circleButton(
+        _ symbol: String, label: String, id: String, raised: Bool, action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(Theme.Palette.ink)
-                .frame(width: 36, height: 36)
-                .background(SoftSurface(Circle(), elevation: .raised))
+                .frame(width: Theme.Metrics.navButton, height: Theme.Metrics.navButton)
+                .background {
+                    if raised {
+                        SoftSurface(Circle(), elevation: .raised)
+                    } else {
+                        Circle().fill(Theme.Palette.track)
+                    }
+                }
         }
         .buttonStyle(.pressable(scale: 0.9))
         .accessibilityLabel(label)
         .accessibilityIdentifier(id)
     }
+}
+
+#Preview {
+    @Previewable @Namespace var ns
+    ComposeFlowView(
+        flowNamespace: ns, folderFrame: .zero, draft: ComposeDraft(),
+        isPresented: true, onClose: {}, onSave: { _ in }
+    )
+    .background(Theme.Palette.canvas)
 }

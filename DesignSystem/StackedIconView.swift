@@ -14,6 +14,9 @@ struct StackedIconView: View {
     var shapeOverride: IconShape? = nil
     /// Inactive tab icons are shown desaturated.
     var isMuted: Bool = false
+    /// Scales the tone-coloured glow under the tiles (1 = default). Small
+    /// containers (picker cells) turn it down so it doesn't wash the surface.
+    var glow: CGFloat = 1
 
     private var shape: IconShape { shapeOverride ?? icon.shape }
 
@@ -66,7 +69,7 @@ struct StackedIconView: View {
             .offset(x: shift, y: shift)
         }
         .frame(width: size, height: size)
-        .shadow(color: icon.tone.base.opacity(isMuted ? 0 : 0.30), radius: size * 0.18, y: size * 0.12)
+        .shadow(color: icon.tone.base.opacity(isMuted ? 0 : 0.30 * glow), radius: size * 0.18 * glow, y: size * 0.12 * glow)
         .saturation(isMuted ? 0 : 1)
         .opacity(isMuted ? 0.6 : 1)
         .accessibilityHidden(true)

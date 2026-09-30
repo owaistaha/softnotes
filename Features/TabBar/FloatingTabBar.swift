@@ -61,6 +61,7 @@ struct FloatingTabBar: View {
             if !isCollapsed {
                 PrimaryActionButton(symbol: "plus", accessibilityLabel: "New note", action: onPrimaryAction)
                     .matchedGeometryEffect(id: FlowID.primaryAction, in: flowNamespace)
+                    .transition(PrimaryActionButton.morphTransition)
             }
         }
         .padding(.horizontal, Theme.Metrics.tabBarInset)
@@ -127,8 +128,21 @@ struct PrimaryActionButton: View {
     /// Disc + ring on both sides — the button's full layout size.
     static var outerDiameter: CGFloat { Theme.Metrics.fabSize + Theme.Metrics.fabRing * 2 }
 
+    /// Transition for the FAB and the Next button, which swap places via
+    /// matched geometry. The *inserted* one is opaque at once (it starts on
+    /// top of the old button's frame); the *removed* one fades out underneath
+    /// while it travels. The pair therefore never thins out mid-flight (both
+    /// default fades gave a ~40 % see-through dip; both `.identity` gave a
+    /// pop, because the removed view must survive to hand over its frame).
+    static var morphTransition: AnyTransition {
+        .asymmetric(insertion: .identity, removal: .opacity)
+    }
+
     var symbol: String
     var progress: Double? = nil
+    /// Fill of the 5pt ring around the disc. The Home FAB's ring is canvas-toned
+    /// (sits in the tab bar); the compose Next button's is white (per reference).
+    var haloFill: Color = Theme.Palette.canvas
     var accessibilityLabel: String
     var action: () -> Void
 
@@ -146,14 +160,15 @@ struct PrimaryActionButton: View {
             // Halo ring: canvas-coloured (reads lighter than the recessed track)
             // with a faint top rim. One SoftSurface (per-layer shape copies), so
             // the drop shadows don't compound like chained `.shadow()` calls.
-            .background(SoftSurface(Circle(), fill: Theme.Palette.canvas, elevation: .raised))
+            .background(SoftSurface(Circle(), fill: haloFill, elevation: .raised))
             .overlay {
                 if let progress {
                     Circle()
                         .trim(from: 0, to: progress)
-                        .stroke(Theme.Palette.amber, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                        .stroke(Theme.Palette.amber, style: StrokeStyle(lineWidth: Theme.Metrics.fabArcWidth, lineCap: .round))
                         .rotationEffect(.degrees(-90))
-                        .padding(1.5)
+                        // Overlay frames don't affect layout: the arc rings the halo.
+                        .frame(width: Theme.Metrics.fabArc, height: Theme.Metrics.fabArc)
                         .animation(Theme.Motion.smooth, value: progress)
                 }
             }

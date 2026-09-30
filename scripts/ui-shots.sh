@@ -16,6 +16,17 @@ ONLY=${1:+-only-testing:SoftNotesUITests/SoftNotesUITests/$1}
 rm -rf "$RESULT" "$OUT"; mkdir -p "$WORK" "$OUT"
 xcodegen generate -q
 
+# VIDEO=1: also record the simulator screen (60 fps) to build/shots/ui/motion.mov.
+# Boots the sim first; the recording brackets the whole xcodebuild run.
+REC_PID=""
+if [[ -n "$VIDEO" ]]; then
+  xcrun simctl boot "$SIM_NAME" 2>/dev/null || true
+  xcrun simctl bootstatus "$SIM_NAME" -b >/dev/null 2>&1
+  xcrun simctl io "$SIM_NAME" recordVideo --codec h264 --force "$OUT/motion.mov" 2>/dev/null &
+  REC_PID=$!
+  sleep 1
+fi
+
 set +e
 xcodebuild test -project SoftNotes.xcodeproj -scheme SoftNotes \
   -destination "platform=iOS Simulator,name=$SIM_NAME" \
@@ -23,6 +34,7 @@ xcodebuild test -project SoftNotes.xcodeproj -scheme SoftNotes \
   | grep -E "error:|Test Case .*(passed|failed)|TEST (SUCCEEDED|FAILED)|\*\* "
 STATUS=${pipestatus[1]}
 set -e
+if [[ -n "$REC_PID" ]]; then kill -INT $REC_PID 2>/dev/null; wait $REC_PID 2>/dev/null; fi
 
 # Export attachments, then give them readable names from manifest.json.
 RAW=$WORK/raw; rm -rf "$RAW"

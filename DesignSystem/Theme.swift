@@ -52,9 +52,23 @@ enum Theme {
         static let searchButton: CGFloat  = 46
         static let countBubble: CGFloat   = 46
 
+        /// Round nav buttons in the compose flow.
+        static let navButton: CGFloat     = 46
+
+        // Icon picker (step 1), measured from the reference.
+        static let pickerCell: CGFloat     = 70
+        static let pickerSpacing: CGFloat  = 15
+        static let pickerRing: CGFloat     = 80
+        static let pickerRingWidth: CGFloat = 2
+        static let pickerPreview: CGFloat  = 120
+
         static let tabBarHeight: CGFloat  = 73
         static let tabBarInset: CGFloat   = 31
         static let tabBarPadding: CGFloat = 8
+        /// Amber progress arc on the Next button: centre-line diameter. It sits
+        /// *outside* the halo ring (measured: ≈ 85pt), it doesn't touch layout.
+        static let fabArc: CGFloat        = 81
+        static let fabArcWidth: CGFloat   = 3.5
         static let fabSize: CGFloat       = 62
         static let fabRing: CGFloat       = 5
     }
@@ -92,6 +106,20 @@ enum PastelTone: String, CaseIterable, Codable, Identifiable, Hashable {
         }
     }
 
+    /// Selection / pressed ring: the base tone darkened ~25% (sampled from the
+    /// reference: blue ring ≈ #5480B6, pink ≈ #C55975).
+    var ring: Color {
+        switch self {
+        case .lavender: Color(hex: 0x6C65BE)
+        case .pink:     Color(hex: 0xBE637D)
+        case .blue:     Color(hex: 0x5180BE)
+        case .orange:   Color(hex: 0xBF7F49)
+        case .green:    Color(hex: 0x529E73)
+        case .yellow:   Color(hex: 0xBF9B45)
+        case .indigo:   Color(hex: 0x5F60B9)
+        }
+    }
+
     /// Frosted front tile tint.
     var light: Color {
         switch self {
@@ -112,7 +140,8 @@ enum PastelTone: String, CaseIterable, Codable, Identifiable, Hashable {
 
 extension Font {
     static let softLargeTitle = Font.system(size: 34, weight: .bold)
-    static let softTitle      = Font.system(size: 24, weight: .bold)
+    /// Compose step titles — measured ≈ 28pt with tight leading (31pt pitch).
+    static let softTitle      = Font.system(size: 28, weight: .bold)
     static let softHeadline   = Font.system(size: 16, weight: .semibold)
     /// Note row titles — one step lighter than `softHeadline` (per reference).
     static let softRowTitle   = Font.system(size: 16, weight: .medium)

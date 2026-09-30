@@ -10,6 +10,12 @@ struct NoteIcon: Codable, Hashable, Identifiable {
     var shape: IconShape = .squircle
 
     var id: String { "\(symbol)-\(tone.rawValue)" }
+
+    /// VoiceOver / UI-test name, derived from the symbol ("cup.and.saucer" → "Cup and saucer").
+    var accessibilityName: String {
+        let words = symbol.split(separator: ".").joined(separator: " ")
+        return words.prefix(1).uppercased() + words.dropFirst()
+    }
 }
 
 extension NoteIcon {
@@ -17,6 +23,9 @@ extension NoteIcon {
     /// Order mirrors the reference grid, row by row.
     /// Outline (non-.fill) symbols to match the reference's thin line glyphs.
     /// All verified present in SF Symbols 5 (iOS 17).
+    /// The picker opens with this one selected (reference: row 2, column 1).
+    static let defaultIcon: NoteIcon = library[4]
+
     static let library: [NoteIcon] = [
         NoteIcon(symbol: "face.smiling",    tone: .lavender, shape: .circle),
         NoteIcon(symbol: "basket",          tone: .pink,     shape: .circle),

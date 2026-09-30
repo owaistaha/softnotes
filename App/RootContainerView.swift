@@ -19,6 +19,8 @@ struct RootContainerView: View {
     @State private var isComposing = false
     @State private var isFolderOpen = false
     @State private var folderFrame: CGRect = .zero
+    /// Fresh for every compose session (see `startComposing`).
+    @State private var draft = ComposeDraft()
 
     @Namespace private var flowNamespace
 
@@ -42,16 +44,17 @@ struct RootContainerView: View {
                     .padding(.bottom, 4)
                 }
 
-            if isComposing {
-                ComposeFlowView(
-                    flowNamespace: flowNamespace,
-                    folderFrame: folderFrame,
-                    onClose: cancelComposing,
-                    onSave: file
-                )
-                .transition(.blurFade)
-                .zIndex(1)
-            }
+            // Always in the hierarchy; it shows/hides its own contents so the
+            // Next button can match-move with the FAB (see ComposeFlowView).
+            ComposeFlowView(
+                flowNamespace: flowNamespace,
+                folderFrame: folderFrame,
+                draft: draft,
+                isPresented: isComposing,
+                onClose: cancelComposing,
+                onSave: file
+            )
+            .zIndex(1)
         }
         .environment(store)
         .onPreferenceChange(FolderFrameKey.self) { folderFrame = $0 }
@@ -78,6 +81,7 @@ struct RootContainerView: View {
     // MARK: - Flow
 
     private func startComposing() {
+        draft = ComposeDraft()
         withAnimation(Theme.Motion.smooth) { isComposing = true }
     }
 

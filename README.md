@@ -26,7 +26,12 @@ Features/
   Home/                      HomeView (publishes FolderFrameKey), FolderCard, RecentNotesSection
   TabBar/FloatingTabBar.swift  tab bar + PrimaryActionButton (FAB / Next)
   Saved/SavedView.swift
-  Compose/ComposeFlowView.swift  compose flow shell
+  Compose/ComposeFlowView.swift  compose flow shell (nav bar, step switch, Next button)
+  Compose/ComposeDraft.swift     compose state (step, icon, text)
+  Compose/IconPickerStep.swift   03 Pick an icon
+  Compose/WriteStep.swift        04 Write a chit (placeholder)
+SoftNotesUITests/                UI tests + screenshot/video tooling (see CLAUDE.md)
+scripts/                         ui-shots.sh, video-disc-track.py, video-ring-track.py, fab-morph-stats.py
 ```
 
 ## Design spec (measured from the recording)

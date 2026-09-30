@@ -64,4 +64,110 @@ final class SoftNotesUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 0.6)
         snap("04_home_after")
     }
+
+    /// Step 3: open the picker, pick a different icon, go Next to step 2, Back to step 1.
+    func testPickIconThenNext() {
+        app.buttons["primaryAction"].tap()
+        XCTAssertTrue(app.buttons["composeClose"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["iconCell_4"].waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 0.8)
+        snap("10_picker_default")
+
+        // Default selection is the blue sun (index 4).
+        XCTAssertTrue(app.buttons["iconCell_4"].isSelected, "default selection should be cell 4")
+
+        // Pick a different icon: the ring should glide, the preview should swap.
+        app.buttons["iconCell_1"].tap()
+        captureSequence("11_pick_pink")
+        XCTAssertTrue(app.buttons["iconCell_1"].isSelected)
+        XCTAssertFalse(app.buttons["iconCell_4"].isSelected)
+        Thread.sleep(forTimeInterval: 0.5)
+        snap("12_picker_pink_settled")
+
+        // Next → step 2 (placeholder).
+        app.buttons["primaryAction"].tap()
+        captureSequence("13_next")
+        XCTAssertTrue(app.staticTexts["Step 2 of 2"].waitForExistence(timeout: 3))
+        Thread.sleep(forTimeInterval: 0.5)
+        snap("14_step2_settled")
+
+        // Back → step 1, selection preserved.
+        app.buttons["composeBack"].tap()
+        captureSequence("15_back")
+        XCTAssertTrue(app.staticTexts["Step 1 of 2"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["iconCell_1"].isSelected, "selection should survive Back")
+
+        // Back on step 1 closes the flow.
+        app.buttons["composeBack"].tap()
+        XCTAssertTrue(app.buttons["primaryAction"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.buttons["composeClose"].exists, "flow should be closed")
+    }
+
+    /// × always cancels, even from step 2; a new session starts fresh on step 1 with the default icon.
+    func testCloseCancelsAndDraftResets() {
+        app.buttons["primaryAction"].tap()
+        XCTAssertTrue(app.buttons["iconCell_4"].waitForExistence(timeout: 5))
+        app.buttons["iconCell_7"].tap()
+        app.buttons["primaryAction"].tap()
+        XCTAssertTrue(app.staticTexts["Step 2 of 2"].waitForExistence(timeout: 3))
+        app.buttons["composeClose"].tap()
+        XCTAssertTrue(app.buttons["primaryAction"].waitForExistence(timeout: 3))
+        Thread.sleep(forTimeInterval: 0.8)
+
+        app.buttons["primaryAction"].tap()
+        XCTAssertTrue(app.staticTexts["Step 1 of 2"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["iconCell_4"].isSelected, "fresh draft should select the default icon")
+    }
+
+    /// No screenshots (they perturb timing): just performs the taps at known
+    /// pauses so `VIDEO=1 scripts/ui-shots.sh testMotionForVideo` can record
+    /// the simulator screen and frames can be extracted at 60 fps.
+    func testMotionForVideo() {
+        Thread.sleep(forTimeInterval: 1.5)
+        app.buttons["primaryAction"].tap()                     // + → Next
+        XCTAssertTrue(app.buttons["composeClose"].waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 2.0)
+        app.buttons["composeClose"].tap()                      // Next → +
+        XCTAssertTrue(app.buttons["primaryAction"].waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 2.0)
+        app.buttons["primaryAction"].tap()
+        XCTAssertTrue(app.buttons["iconCell_1"].waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 2.0)
+        app.buttons["iconCell_1"].tap()                        // ring glides, preview swaps
+        Thread.sleep(forTimeInterval: 2.0)
+        app.buttons["primaryAction"].tap()                     // step 1 → 2
+        Thread.sleep(forTimeInterval: 2.0)
+        app.buttons["composeBack"].tap()                       // step 2 → 1
+        Thread.sleep(forTimeInterval: 2.0)
+    }
+
+    /// DEBUG launch argument `-demoSave`: Next on the write step files a demo
+    /// note (with the icon picked in step 1), and Home shows it.
+    func testDemoSaveLaunchArgument() {
+        app.terminate()
+        app.launchArguments = ["-demoSave"]
+        app.launch()
+        XCTAssertTrue(app.buttons["primaryAction"].waitForExistence(timeout: 10))
+        Thread.sleep(forTimeInterval: 1.0)
+
+        app.buttons["primaryAction"].tap()
+        XCTAssertTrue(app.buttons["iconCell_2"].waitForExistence(timeout: 5))
+        app.buttons["iconCell_2"].tap()
+        app.buttons["primaryAction"].tap()                       // → step 2
+        XCTAssertTrue(app.staticTexts["Step 2 of 2"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["primaryAction"].isEnabled, "-demoSave should enable Next on the write step")
+        app.buttons["primaryAction"].tap()                       // → demo save
+        XCTAssertTrue(app.staticTexts["Have a good day"].waitForExistence(timeout: 5), "demo note should appear in Recent")
+        Thread.sleep(forTimeInterval: 1.5)
+        snap("20_demo_saved_home")
+    }
+
+    /// Without `-demoSave`, Next on the (empty) write step is disabled.
+    func testNextDisabledOnEmptyWriteStep() {
+        app.buttons["primaryAction"].tap()
+        XCTAssertTrue(app.buttons["iconCell_0"].waitForExistence(timeout: 5))
+        app.buttons["primaryAction"].tap()
+        XCTAssertTrue(app.staticTexts["Step 2 of 2"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.buttons["primaryAction"].isEnabled, "Next must be disabled while the note is empty")
+    }
 }

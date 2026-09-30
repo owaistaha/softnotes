@@ -167,7 +167,12 @@ Features/
   Home/RecentNotesSection.swift Recent header + NoteRow (context menu: Save / Delete)
   TabBar/FloatingTabBar.swift   AppTab, FlowID, FloatingTabBar (sliding pill), PrimaryActionButton
   Saved/SavedView.swift         Saved list + empty state
-  Compose/ComposeFlowView.swift Nav bar + morphing Next button (+ steps, from Step 2/3 on)
+  Compose/ComposeDraft.swift    ComposeStep (pickIcon=1, write, save) + @Observable ComposeDraft
+                                (step, icon, text, tags; progress, canAdvance, advance/goBack)
+  Compose/ComposeFlowView.swift Shell: ComposeNavBar + step switch (.blurFade) + Next button;
+                                stays in the hierarchy, shows/hides its contents (isPresented)
+  Compose/IconPickerStep.swift  03 Pick an icon (built, Step 3)
+  Compose/WriteStep.swift       04 Write a chit — PLACEHOLDER until Step 4
 SoftNotesUITests/               UI tests (see "Test & screenshot loop")
 README.md                       Human-facing setup + design spec summary
 ```
@@ -191,6 +196,20 @@ Key invariants:
   be *present* at a time — the FAB is removed (`if !isCollapsed`) when
   compose shows. Both state changes must happen inside the same
   `withAnimation` transaction or the morph breaks.
+- **Matched pairs need asymmetric transitions** (learned by measuring, Step 3):
+  `PrimaryActionButton.morphTransition` = `.asymmetric(insertion: .identity,
+  removal: .opacity)`, applied to the FAB *and* to the **container** that is
+  inserted/removed around Next (a transition on a child of an inserted
+  container is ignored). Why: the inserted view starts opaque on the old
+  view's frame, the removed view survives (fading) to hand that frame over.
+  Both `.identity` = the view *pops* (nothing left to match); both default
+  (opacity) = a glide that dips ~40% see-through mid-flight; a blur-fade on
+  a parent that also contains Next dissolves it. Same rule for any future
+  matched pair. Known residual: on *close* (Next → FAB) the disc still dips
+  to ~45% opaque for ~100 ms — cause not found (not Home's opacity — probed);
+  the reference never shows a close.
+- `ComposeFlowView` stays in the hierarchy permanently (`isPresented`), and its
+  Next button lives in a layer *outside* the blur-fading content (nav + step).
 - The FAB is positioned by layout, not `.offset`: `FloatingTabBar` is a
   `ZStack(alignment: .top)` whose track is padded down by half the FAB's
   outer diameter (`PrimaryActionButton.outerDiameter / 2`), so the FAB's
@@ -273,20 +292,42 @@ Measured on the 14.0s frame (settled, 9 notes; the reference phone is
   (sampled ≈ `#F1F1F1`, reads lighter than the track) with a faint top rim
   and a soft drop shadow. Its centre sits on the track's top edge.
 
-### 03 Pick an icon (≈ 0:02–0:05) — NOT BUILT YET
-- Screen enters with a blur-fade. Nav bar: round back button (left),
-  "New note" / "Step 1 of 3" centred, round close button (right).
-- Title "Select an icon for your note" (2 lines, ~24pt bold, centred).
-- A large preview of the selected icon (~64pt, on a white circular
-  surface) under the title — it swaps with a spring when selection changes.
-- Grid: 4 columns × 3 rows of `NoteIcon.library`, each on a white circular
-  cell (~52pt) with a soft shadow. The selected cell gets a thin coloured
-  ring in its tone; the ring moves between cells (use matchedGeometryEffect
-  within the grid). Light haptic on select.
-- Bottom: the Next button (morphed FAB) with amber arc at 1/3.
+### 03 Pick an icon (≈ 0:02–0:05) — BUILT (Step 3)
+Measured on the settled frame at 4.1 s (393pt phone; numbers in `Theme.Metrics`).
+- **The nav bar says "Step 1 of 2" / "Step 2 of 2"** — the reference has
+  *two* counted steps (the third phase, save/fold, hides the nav), yet the
+  Next button's amber arc runs in **thirds**: exactly 120° on step 1, 240° on
+  step 2, eased over ~0.4 s (`ComposeDraft.progress` = step/3,
+  `visibleStepCount` = 2). (This file and the task brief once said "of 3";
+  the video says "of 2".)
+- Screen enters with a blur-fade (content only — the Next button glides solid,
+  see Architecture). Nav: 46pt round buttons, 20pt inset — **back = raised white
+  disc, close = flat grey (`track`) disc**, 14pt medium glyphs; "New note" 15
+  semibold / "Step n of 2" 12 secondary, centred.
+- Title "Select an icon / for your note": 2 lines, **28pt bold**, tracking −0.4,
+  31pt line pitch (two stacked Texts, spacing −2.5 — SwiftUI ignores negative
+  `lineSpacing`); first line ≈ 66pt below the nav centre.
+- Preview: 120pt white circle (raised shadow) with the icon at 72pt, ~25pt
+  below the title; swaps with a scale+fade spring when the selection changes.
+- Grid: 4×3, cells **70pt** white circles on an 85pt pitch (15pt gaps, 325pt
+  wide, centred), 40pt squircle icons (all squircles), glow scaled to 0.5 and
+  clipped inside the cell. Default selection: index 4 (blue, row 2 col 1).
+- Selection ring: **80pt outer, 2pt stroke, the tone darkened ~25%**
+  (`PastelTone.ring`), 5pt off the cell edge. It is ONE persistent view that
+  follows the selected cell via matchedGeometryEffect (`properties: .position`,
+  non-source; cells are the sources) — measured glide ≈ 0.25 s with a ~7pt
+  bouncy overshoot. A per-cell `if isSelected` ring with matched geometry
+  did not work: it popped or left a gap (see Architecture). Light impact haptic.
+- Pressed state (seen in the reference at ~2.7–3.3 s, where the pink cell is
+  held but the selection is *not* changed): the cell dips (0.95), tints, and
+  shows a ring in its own tone that fades on release. The reference video
+  never shows a selection change — the glide above is by spec, not observed.
+- Bottom: Next (disc 62pt, **white** 5pt halo ring — the Home FAB's is
+  canvas-toned; arc drawn *outside* the halo: 81pt centre-line, 3.5pt) about
+  74pt from the screen bottom. Reference disc is ≈64pt; we keep 62.
 
 ### 04 Write a chit (≈ 0:05–0:08.5) — NOT BUILT YET
-- "Step 2 of 3", title "What's on your mind today?".
+- "Step 2 of 2" (arc 240°), title "What's on your mind today?" (same 28pt title style).
 - Paper card (`paper` colour, radius ~22, ~200×230pt) resting slightly
   rotated (≈ -3°). Card header: small icon (the one picked) + "Morning note"
   semibold + date/time caption ("28 Sep · 9:41"). Faint horizontal ruled
@@ -300,7 +341,7 @@ Measured on the 14.0s frame (settled, 9 notes; the reference phone is
   Evening / Night note) — derived, not typed.
 
 ### 05 Save (≈ 0:08.5–0:09.3) — NOT BUILT YET
-- "Step 3 of 3". Keyboard dismisses, card settles centred and straight,
+- No nav any more (the third phase). Keyboard dismisses, card settles centred and straight,
   amber arc completes.
 - The picked icon lifts off the card header and grows (~48pt) to sit
   centred on the card's top edge. Nav bar and title fade out. The Next
@@ -392,7 +433,8 @@ iPad, widgets, sync, custom fonts. Don't start these on your own.
 600 ms after a tap, with the *actual* capture time in the file name — so
 motion can be inspected frame by frame. Buttons the tests need carry
 `accessibilityIdentifier`s (`primaryAction` is the Home FAB *and* the compose
-Next button; `composeBack`, `composeClose`; picker cells `iconCell_<index>`).
+Next button; `composeBack`, `composeClose`; picker cells `iconCell_<0…11>`,
+preview `iconPreview`).
 
 ```
 scripts/ui-shots.sh                 # run all UI tests, export screenshots
@@ -409,9 +451,29 @@ Add a test (and its identifiers) for every new interaction you build.
 To measure a motion, script it: e.g. find the FAB disc's centroid and
 darkness per frame (a solid ink disc reads ≈ 23 on a 0–255 gray scale).
 
+**Screenshots are for settled states, video is for motion.** Each screenshot
+takes 50–300 ms (slower on busy screens), so a "0/150/300/600 ms" burst really
+lands at 0/330/490/690 ms — the file name carries the actual time, but don't
+judge a 300 ms animation from it. For motion use the recording:
+
+```
+VIDEO=1 scripts/ui-shots.sh testMotionForVideo   # records build/shots/ui/motion.mov (60 fps)
+scripts/video-disc-track.py  build/shots/ui/motion.mov   # FAB/Next disc: centre + opacity per frame
+scripts/video-ring-track.py  build/shots/ui/motion.mov 27 40   # picker selection ring per frame
+scripts/fab-morph-stats.py   build/shots/ui 01_ 03_      # same disc measure on screenshots
+```
+The trackers print one line per *change*; a glide is a run of intermediate
+positions over several frames, a pop is a single jump, a dissolve is `core`
+(darkness) drifting up (23 ≈ solid ink). Times in their output are frame
+indices / 60 — **don't** feed them to `ffmpeg -ss` (screen recordings are
+variable-frame-rate, seeks land seconds off); extract frames with a `fps=60`
+filter and count instead, or `select=between(n,a,b)`.
+Add a test to `testMotionForVideo` (or a new one) for every new animation.
+
 Launch arguments (DEBUG only): `-demoSave` — on the compose flow's last
-implemented step, Next files a demo note so Home's save choreography can be
-tested before the real fold exists.
+implemented step (currently the write placeholder), Next files a demo note
+(with the icon picked in step 1) so Home's save choreography can be tested
+before the real fold exists. Without it, Next on the empty write step is disabled.
 
 ---
 
@@ -492,13 +554,14 @@ with simple fades.
 
 - [x] Step 1 — Compile & baseline (project.yml, build, screenshot vs reference)
 - [x] Step 1b — Match Home to the reference (FAB overhang, tokens, folder, rows, tab bar, outline icons)
-- [ ] Step 2 — Compose state (ComposeDraft, step navigation)
-- [ ] Step 3 — 03 Pick an icon
+- [x] Step 2 — Compose state (ComposeDraft, step navigation)
+- [x] Step 3 — 03 Pick an icon
 - [ ] Step 4 — 04 Write a chit
 - [ ] Step 5 — 05 Save + 06 Fold + 07 hand-off
 - [ ] Step 6 — Polish, Reduce Motion, VoiceOver
 
 Log:
 - (add one line per session: date, what changed, what's still off vs the reference)
+- 2026-09-30 — Steps 2+3: files moved into App/DesignSystem/Models/Features; UI-test target + `scripts/ui-shots.sh` (+ VIDEO=1 recording and disc/ring trackers); ComposeDraft/ComposeStep, ComposeFlowView shell (always in tree, `isPresented`), IconPickerStep, WriteStep placeholder, `-demoSave` (DEBUG). **FAB → Next morph measured: it glides, it doesn't pop** — but the original build dissolved (disc ~40–50% see-through mid-flight, because Next sat inside the blur-fading overlay); now open = solid glide (y 764→799, ~0.4 s, opacity constant). Close still dips (~45% opaque, ~100 ms; cause unknown). Reference says "Step n of **2**" with the arc in thirds — we follow the video, not the old "of 3". Picker matches the reference layout to within ~1–2pt at the same scale. Still off vs reference: back-tile tones are less saturated than the reference (its blue/pink/orange backs are deeper); glyphs are SF outline symbols, not the reference's ghost/cherries/rocket/target/sneaker/basketball/flag/music/cloud/cup/leaf/star; icon glass a touch more milky; Next disc 62pt vs ≈64pt; Next halo shadow lighter; reference title first-line sits ~3pt higher (safe-area difference).
 - 2026-09-30 — Step 1b: FAB now overhangs the track (ZStack + top padding; alignmentGuide removed). Tokens: lavenderTint #E2DAFF, hairline, listInset 16 / rowHeight 58 / rowSpacing 6 / rowLeading 8, searchButton 46, countBubble 46, tabBar 73×(31 inset, 8 pad), FAB 62; Font.softRowTitle (16 medium); Elevation.folder. Folder 235×174, tab 0.38 + 27pt curve (0.41 overshot when measured), chips re-slotted (centre lowest), toggle 116×46, hinge −6°. Outline SF Symbols everywhere (all verified on the iOS 17.5 runtime), lighter front glass. Fixed English date. git init + .gitignore (xcodeproj, Reference/*.mov). Still off: "Notes" title ~9% narrower than ref; ref chip glyphs a bit larger/bolder; ref toggle label slightly heavier; ref folder front has a faint mid-panel shading band; sample icons (basket/paperplane/book) differ from ref (cherries/sneaker/rocket) by design.
 - 2026-09-30 — Step 1: sources are flat at repo root (not App/, DesignSystem/…), so project.yml uses `path: .` + `*.swift` includes; added .gitignore; copied reference to Reference/reference-walkthrough.mov. Built clean on iPhone 17 Pro sim (Xcode 26.6) with zero code changes — no compile errors or warnings. Still off vs reference (14.0s frame): FAB sits centred inside the tab bar instead of overhanging its top edge (alignmentGuide not taking effect); FAB ~58pt vs ~62pt; folder ~6% too large; search button 40pt vs ~46pt and bottom-aligned instead of centred on the header; rows 20pt inset/62pt tall/9pt gap vs ~16/58/6; row icon further from edge; tab track has a bright outline the reference lacks; glyphs filled vs the reference's outline style; date uses device locale (US order); open-folder hinge is much stronger than the reference's.

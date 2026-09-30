@@ -14,6 +14,16 @@ RESULT=$WORK/result.xcresult
 ONLY=${1:+-only-testing:SoftNotesUITests/SoftNotesUITests/$1}
 
 rm -rf "$RESULT" "$OUT"; mkdir -p "$WORK" "$OUT"
+
+# Show the *software* keyboard (the write step's layout depends on it): turn off
+# the Mac-keyboard passthrough globally and for this device. Needs a sim reboot
+# to take effect if Simulator.app already connected a hardware keyboard.
+UDID=$(xcrun simctl list devices available | grep -m1 "    $SIM_NAME (" | grep -oE '[0-9A-F-]{36}')
+defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool false
+/usr/libexec/PlistBuddy -c "Delete :DevicePreferences:$UDID:ConnectHardwareKeyboard" \
+  ~/Library/Preferences/com.apple.iphonesimulator.plist >/dev/null 2>&1 || true
+/usr/libexec/PlistBuddy -c "Add :DevicePreferences:$UDID:ConnectHardwareKeyboard bool false" \
+  ~/Library/Preferences/com.apple.iphonesimulator.plist >/dev/null 2>&1 || true
 xcodegen generate -q
 
 # VIDEO=1: also record the simulator screen (60 fps) to build/shots/ui/motion.mov.

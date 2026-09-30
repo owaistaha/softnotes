@@ -29,6 +29,10 @@ struct ComposeFlowView: View {
                         onBack: back,
                         onClose: onClose
                     )
+                    // While typing, the nav slides up and away (reference).
+                    .offset(y: draft.isEditingText ? -110 : 0)
+                    .opacity(draft.isEditingText ? 0 : 1)
+                    .allowsHitTesting(!draft.isEditingText)
 
                     ZStack {
                         switch draft.step {
@@ -41,7 +45,8 @@ struct ComposeFlowView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
                     // Room for the Next button, which is drawn in its own layer below.
-                    Color.clear.frame(height: PrimaryActionButton.outerDiameter + 4)
+                    Color.clear.frame(height: PrimaryActionButton.outerDiameter + nextBottomGap
+                                      + (draft.isEditingText ? Self.cardToNextGap : 0))
                 }
                 .padding(.horizontal, Theme.Metrics.screenPadding)
                 .transition(.blurFade)
@@ -59,15 +64,22 @@ struct ComposeFlowView: View {
                     .opacity(nextEnabled ? 1 : 0.35)
                     .animation(Theme.Motion.snappy, value: nextEnabled)
                     .matchedGeometryEffect(id: FlowID.primaryAction, in: flowNamespace)
-                    .padding(.bottom, 4)
+                    .padding(.bottom, nextBottomGap)
                 }
                 // See `PrimaryActionButton.morphTransition` — must sit on the
                 // view that is actually inserted/removed (this container).
                 .transition(PrimaryActionButton.morphTransition)
             }
         }
+        .keyboardOverlapPadding()
         .allowsHitTesting(isPresented)
     }
+
+    /// Next sits 4pt above the home indicator area normally, and ≈22pt above
+    /// the keyboard while typing (reference: centre 58pt above the keys).
+    private var nextBottomGap: CGFloat { draft.isEditingText ? 22 : 4 }
+    /// Reference: ≈17pt between the (grown) card and the Next halo.
+    private static let cardToNextGap: CGFloat = 17
 
     // MARK: - Actions
 
@@ -84,8 +96,14 @@ struct ComposeFlowView: View {
         case .pickIcon:
             withAnimation(Theme.Motion.smooth) { _ = draft.advance() }
         case .write:
-            // Step 5 replaces this with the real save → fold → file-away.
-            if Self.demoSaveEnabled { onSave(demoNote()) }
+            // Files the note; Home runs its landing choreography. Step 5
+            // layers the save → fold → file-away in front of this.
+            if draft.canAdvance {
+                draft.isEditingText = false
+                onSave(draft.makeNote())
+            } else if Self.demoSaveEnabled {
+                onSave(demoNote())
+            }
         case .save:
             break
         }

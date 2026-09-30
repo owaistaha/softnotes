@@ -172,7 +172,12 @@ Features/
   Compose/ComposeFlowView.swift Shell: ComposeNavBar + step switch (.blurFade) + Next button;
                                 stays in the hierarchy, shows/hides its contents (isPresented)
   Compose/IconPickerStep.swift  03 Pick an icon (built, Step 3)
-  Compose/WriteStep.swift       04 Write a chit — PLACEHOLDER until Step 4
+  Compose/WriteStep.swift       04 Write a chit (built, Step 4): title + posed card + TextField,
+                                auto-focus, top→bottom alignment flip while typing
+  Compose/NoteCardView.swift    NoteCardPose (resting/editing/review), NoteCardView (pose),
+                                NoteCardContent (flat card, ONE view — Step 5 renders it twice
+                                and masks halves), NoteCardStaticText, NoteCardFormat
+  Compose/KeyboardOverlapPadding.swift  iOS 26 keyboard safe-area fix (see Architecture)
 SoftNotesUITests/               UI tests (see "Test & screenshot loop")
 README.md                       Human-facing setup + design spec summary
 ```
@@ -214,6 +219,17 @@ Key invariants:
   Probe next time with `scripts/video-frames.sh` on the close window.
 - `ComposeFlowView` stays in the hierarchy permanently (`isPresented`), and its
   Next button lives in a layer *outside* the blur-fading content (nav + step).
+- **Keyboard on iOS 26:** SwiftUI's keyboard safe area stops ≈44pt *inside*
+  the keyboard's visible top (probe: UIKit frame y = 539, SwiftUI safe edge
+  583 on iPhone 17 Pro). `keyboardOverlapPadding()` on `ComposeFlowView` pads
+  by the real overlap from `keyboardWillChangeFrame`, **capped at 80pt**:
+  UIKit's notification lands ≈0.5 s before SwiftUI applies its keyboard
+  inset, and correcting by the full difference then squashed the nav and made
+  the title overshoot. Don't remove the cap.
+- **Text-field caps:** clamp in the binding's setter *and* re-set one tick
+  later (`WriteStep.textBinding`); clamping in `onChange` or only in the
+  setter leaves the field showing too much. Verify with one-key-at-a-time
+  typing (`testTextCapAndFit`) — XCUITest's burst `typeText` outruns it.
 - The FAB is positioned by layout, not `.offset`: `FloatingTabBar` is a
   `ZStack(alignment: .top)` whose track is padded down by half the FAB's
   outer diameter (`PrimaryActionButton.outerDiameter / 2`), so the FAB's
@@ -250,7 +266,7 @@ Key invariants:
 | Ink (text, FAB) | `#17161A` |
 | Secondary / tertiary text | `#8E8C93` / `#C2C0C6` |
 | Toggle on | bg `#E2DAFF`, text `#7B6FE0` |
-| Paper (note card) | `#FBF8EE` |
+| Paper (note card) | `#FFFDFA` (sampled; the old `#FBF8EE` was too cream) · tag chip `#F5EFE5` · rules/divider black @ 6% |
 | Hairline (count bubble edge) | black @ 6% |
 | Progress arc on Next button | amber `#F5B74A` |
 | Pastel tones (base / light) | lavender `#9E81F6/#CBC6F7`, pink `#F77696/#F8C2D2`, blue `#5A9AF6/#B3D2FC`, orange `#FB9A4B/#FFD6B0`, green `#63C36C/#BDEBD0`, yellow `#FFBF55/#FFE7A8`, indigo `#837AF1/#C4C5FB` — bases calibrated so the *rendered* back tile matches the reference picker (4.1 s) within ~4/255. The reference also has a coral (`≈#FA9471` rendered: target, cup) and a cyan-blue (cloud) we don't model. |
@@ -330,19 +346,37 @@ Measured on the settled frame at 4.1 s (393pt phone; numbers in `Theme.Metrics`)
   canvas-toned; arc drawn *outside* the halo: 81pt centre-line, 3.5pt) about
   74pt from the screen bottom. Reference disc is ≈64pt; we keep 62.
 
-### 04 Write a chit (≈ 0:05–0:08.5) — NOT BUILT YET
-- "Step 2 of 2" (arc 240°), title "What's on your mind today?" (same 28pt title style).
-- Paper card (`paper` colour, radius ~22, ~200×230pt) resting slightly
-  rotated (≈ -3°). Card header: small icon (the one picked) + "Morning note"
-  semibold + date/time caption ("28 Sep · 9:41"). Faint horizontal ruled
-  lines. Placeholder "Tap to write..." with blinking caret. A beige tag chip
-  ("Daily") bottom-left.
-- On focus the native keyboard rises: the card straightens to 0°, scales
-  up a touch and moves up; title scrolls up partly under the nav; the Next
-  button rides just above the keyboard. Typed text is large (~20pt
-  semibold, ink).
-- Title "Morning note" should follow time of day (Morning / Afternoon /
-  Evening / Night note) — derived, not typed.
+### 04 Write a chit (≈ 3.9–7.3 s) — BUILT (Step 4)
+Measured from 4.69 s (rest, before the tap) and 6.95 s (typed), 393pt phone.
+- Nav "Step 2 of 2", arc 240°. Title "What’s on your / mind today?" (curly
+  apostrophe), same 28pt style as step 1. The title blur-fades in place while
+  the **card slides in from the trailing edge**, blurred (≈3.9–4.3 s).
+- Card at rest: **≈236×258pt, −2.7°** (we use −3°), centred, top ≈65pt under
+  the title. Paper `#FFFDFA` (near-white, warm), radius 22, `.raised` shadow.
+  Header: 32pt squircle icon (the picked one) + "Morning note" 13 semibold +
+  "28 Sep · 9:41" 11 secondary (fixed en_GB "d MMM · H:mm"). Heading follows
+  the time of day: Morning 5–12h, Afternoon 12–17h, Evening 17–21h, Night.
+  Dashed divider at 52pt; decorative rules at 118/148/178/208pt, **the last
+  one ≈45% width**. "Tap to write..." first line centred ≈78pt down; text
+  **24pt semibold**, 30pt pitch, 4 lines max; **amber caret**. Tag chip
+  bottom-left reads **"#daily"** (`#` + lowercased tag) on `#F5EFE5`; tapping
+  it cycles Daily → Work → Errands → Ideas (our addition, not in the video).
+- Focus: the reference *taps* the card ≈0.87 s after Next; we auto-focus
+  after the same 0.85 s (and a tap on the card also focuses). The simulator's
+  keyboard then takes ≈0.5 s to start rising (first show); the rise itself
+  ≈0.33 s in both.
+- Keyboard up: **status bar hides, nav slides up and fades**, the layout flips
+  from top- to bottom-aligned so title + card ride up on the keyboard; card
+  poses to **×1.2 (anchored bottom), −1.5°** (not 0°). Next sits ≈55pt
+  (centre) above the keys' visible top, card ≈17pt above Next. The reference's
+  keyboard is 412pt tall (ours 334pt), so there the title is pushed off the
+  top; ours stays visible.
+- Leaving while typing: Done (Return) or a tap outside the card dismisses the
+  keyboard and brings the nav back. Text is capped at **48 characters**
+  (fits 4 lines even for all-caps words; see `ComposeDraft.maxTextLength`).
+- Next is **disabled (35% opacity) while empty** — by spec; the reference's
+  Next looks enabled on the empty card. Next builds a `Note` from the draft
+  (text → title/body, icon, tag) and hands it to the container's `file(_:)`.
 
 ### 05 Save (≈ 0:08.5–0:09.3) — NOT BUILT YET
 - No nav any more (the third phase). Keyboard dismisses, card settles centred and straight,
@@ -435,10 +469,17 @@ iPad, widgets, sync, custom fonts. Don't start these on your own.
 `SoftNotesUITests/`). Tests tap through the app and attach screenshots
 (`XCTAttachment`, `.keepAlways`) — including timed bursts at ~0 / 150 / 300 /
 600 ms after a tap, with the *actual* capture time in the file name — so
-motion can be inspected frame by frame. Buttons the tests need carry
+motion can be inspected frame by frame. The script also turns off the simulator's hardware keyboard
+(`ConnectHardwareKeyboard`) so the software keyboard shows — if Simulator.app
+was already running with it connected, quit Simulator.app once
+(`osascript -e 'quit app "Simulator"'`) for it to take effect. Tests that need
+Back/× on the write step must first press Done (`leaveTextFieldIfFocused()`),
+because the nav hides while typing.
+Buttons the tests need carry
 `accessibilityIdentifier`s (`primaryAction` is the Home FAB *and* the compose
 Next button; `composeBack`, `composeClose`; picker cells `iconCell_<0…11>`,
-preview `iconPreview`).
+preview `iconPreview`; write step `noteText`, `tagChip`). Don't put an
+identifier on a container — it overrides its children's.
 
 ```
 scripts/ui-shots.sh                 # run all UI tests, export screenshots
@@ -462,6 +503,7 @@ judge a 300 ms animation from it. For motion use the recording:
 
 ```
 VIDEO=1 scripts/ui-shots.sh testMotionForVideo   # records build/shots/ui/motion.mov (60 fps)
+VIDEO=1 scripts/ui-shots.sh testWriteMotionForVideo   # keyboard rise, typing, save
 scripts/video-disc-track.py  build/shots/ui/motion.mov   # FAB/Next disc: centre + opacity per frame
 scripts/video-ring-track.py  build/shots/ui/motion.mov 27 40   # picker selection ring per frame
 scripts/fab-morph-stats.py   build/shots/ui 01_ 03_      # same disc measure on screenshots
@@ -478,9 +520,9 @@ which selects frames on the same time base. Note `ui-shots.sh` wipes
 Add a test to `testMotionForVideo` (or a new one) for every new animation.
 
 Launch arguments (DEBUG only): `-demoSave` — on the compose flow's last
-implemented step (currently the write placeholder), Next files a demo note
-(with the icon picked in step 1) so Home's save choreography can be tested
-before the real fold exists. Without it, Next on the empty write step is disabled.
+write step, Next on an *empty* card files a demo note (with the icon picked
+in step 1) instead of staying disabled — a shortcut for tests. Normal path:
+Next is disabled while empty and files the typed note.
 
 ---
 
@@ -563,12 +605,13 @@ with simple fades.
 - [x] Step 1b — Match Home to the reference (FAB overhang, tokens, folder, rows, tab bar, outline icons)
 - [x] Step 2 — Compose state (ComposeDraft, step navigation)
 - [x] Step 3 — 03 Pick an icon
-- [ ] Step 4 — 04 Write a chit
+- [x] Step 4 — 04 Write a chit
 - [ ] Step 5 — 05 Save + 06 Fold + 07 hand-off
 - [ ] Step 6 — Polish, Reduce Motion, VoiceOver
 
 Log:
 - (add one line per session: date, what changed, what's still off vs the reference)
+- 2026-09-30 — Close-morph probe: + already had `morphTransition`; close is a sequential fade (Next fades in place, then + fades in) — unresolved, documented. PastelTone bases calibrated to the reference picker (rendered within ~4/255; lavender more violet, green more yellow-green). Step 4: NoteCardView/NoteCardContent (posed, single-view content), WriteStep (auto-focus 0.85 s, top→bottom layout flip, status bar + nav hide), KeyboardOverlapPadding (iOS 26 44pt keyboard overlap), 48-char cap, tag chip cycling, real Note → `file(_:)`; paper token corrected to `#FFFDFA`; 10 UI tests pass (one earlier run had two unreproduced "Timed out while evaluating UI query" failures). Still off vs reference: keyboard height differs (ref 412pt, ours 334pt → our title stays on screen while typing); ref Next looks enabled on the empty card (ours disabled by spec); keyboard starts ≈0.5 s later after focus in the simulator; ref header icon/heading a touch larger; card sits ≈4–10pt lower (safe-area difference); icon glyph differs (sun vs sneaker).
 - 2026-09-30 — Steps 2+3: files moved into App/DesignSystem/Models/Features; UI-test target + `scripts/ui-shots.sh` (+ VIDEO=1 recording and disc/ring trackers); ComposeDraft/ComposeStep, ComposeFlowView shell (always in tree, `isPresented`), IconPickerStep, WriteStep placeholder, `-demoSave` (DEBUG). **FAB → Next morph measured: it glides, it doesn't pop** — but the original build dissolved (disc ~40–50% see-through mid-flight, because Next sat inside the blur-fading overlay); now open = solid glide (y 764→799, ~0.4 s, opacity constant). Close still dips (~45% opaque, ~100 ms; cause unknown). Reference says "Step n of **2**" with the arc in thirds — we follow the video, not the old "of 3". Picker matches the reference layout to within ~1–2pt at the same scale. Still off vs reference: back-tile tones are less saturated than the reference (its blue/pink/orange backs are deeper); glyphs are SF outline symbols, not the reference's ghost/cherries/rocket/target/sneaker/basketball/flag/music/cloud/cup/leaf/star; icon glass a touch more milky; Next disc 62pt vs ≈64pt; Next halo shadow lighter; reference title first-line sits ~3pt higher (safe-area difference).
 - 2026-09-30 — Step 1b: FAB now overhangs the track (ZStack + top padding; alignmentGuide removed). Tokens: lavenderTint #E2DAFF, hairline, listInset 16 / rowHeight 58 / rowSpacing 6 / rowLeading 8, searchButton 46, countBubble 46, tabBar 73×(31 inset, 8 pad), FAB 62; Font.softRowTitle (16 medium); Elevation.folder. Folder 235×174, tab 0.38 + 27pt curve (0.41 overshot when measured), chips re-slotted (centre lowest), toggle 116×46, hinge −6°. Outline SF Symbols everywhere (all verified on the iOS 17.5 runtime), lighter front glass. Fixed English date. git init + .gitignore (xcodeproj, Reference/*.mov). Still off: "Notes" title ~9% narrower than ref; ref chip glyphs a bit larger/bolder; ref toggle label slightly heavier; ref folder front has a faint mid-panel shading band; sample icons (basket/paperplane/book) differ from ref (cherries/sneaker/rocket) by design.
 - 2026-09-30 — Step 1: sources are flat at repo root (not App/, DesignSystem/…), so project.yml uses `path: .` + `*.swift` includes; added .gitignore; copied reference to Reference/reference-walkthrough.mov. Built clean on iPhone 17 Pro sim (Xcode 26.6) with zero code changes — no compile errors or warnings. Still off vs reference (14.0s frame): FAB sits centred inside the tab bar instead of overhanging its top edge (alignmentGuide not taking effect); FAB ~58pt vs ~62pt; folder ~6% too large; search button 40pt vs ~46pt and bottom-aligned instead of centred on the header; rows 20pt inset/62pt tall/9pt gap vs ~16/58/6; row icon further from edge; tab track has a bright outline the reference lacks; glyphs filled vs the reference's outline style; date uses device locale (US order); open-folder hinge is much stronger than the reference's.

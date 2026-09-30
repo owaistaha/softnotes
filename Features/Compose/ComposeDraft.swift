@@ -20,10 +20,25 @@ final class ComposeDraft {
     /// fold phase is the third.
     static let visibleStepCount = 2
 
+    /// Tag presets the card's chip cycles through (not in the reference).
+    static let tagPresets = ["Daily", "Work", "Errands", "Ideas"]
+
+    /// Hard cap on the note text so it fits the card's 4-line text area
+    /// (208pt wide, 24pt semibold). Measured by `testTextCapAndFit`: a typical
+    /// 60-char sentence fits 4 lines but all-caps words ("WOW " × 15) need 5,
+    /// so the cap is 48 — twelve "WOW"s fill exactly 4 lines. Only 48 unbroken
+    /// wide capitals ("WWWW…") would still overflow (the field then scrolls).
+    static let maxTextLength = 48
+
     var step: ComposeStep = .pickIcon
     var icon: NoteIcon = .defaultIcon
     var text: String = ""
-    var tags: [String] = []
+    var tags: [String] = [tagPresets[0]]
+    /// When the draft was started — drives the card's heading and timestamp.
+    let createdAt: Date = .now
+    /// True while the write step's text field has focus (keyboard up). The
+    /// flow uses it to slide the nav away and hide the status bar.
+    var isEditingText = false
 
     // MARK: Derived
 
@@ -40,6 +55,26 @@ final class ComposeDraft {
         case .write:    !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         case .save:     false
         }
+    }
+
+    var tag: String { tags.first ?? Self.tagPresets[0] }
+
+    /// Daily → Work → Errands → Ideas → Daily.
+    func cycleTag() {
+        let index = Self.tagPresets.firstIndex(of: tag) ?? -1
+        tags = [Self.tagPresets[(index + 1) % Self.tagPresets.count]]
+    }
+
+    /// Cleans typed input: no newlines (Return means "done"), capped length.
+    static func sanitized(_ input: String) -> String {
+        let cleaned = input.filter { !$0.isNewline }
+        return cleaned.count > maxTextLength ? String(cleaned.prefix(maxTextLength)) : cleaned
+    }
+
+    /// The note this draft produces.
+    func makeNote() -> Note {
+        let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return Note(title: body, body: body, icon: icon, tags: tags, createdAt: .now)
     }
 
     // MARK: Navigation

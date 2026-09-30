@@ -29,7 +29,9 @@ Features/
   Compose/ComposeFlowView.swift  compose flow shell (nav bar, step switch, Next button)
   Compose/ComposeDraft.swift     compose state (step, icon, text)
   Compose/IconPickerStep.swift   03 Pick an icon
-  Compose/WriteStep.swift        04 Write a chit (placeholder)
+  Compose/WriteStep.swift        04 Write a chit
+  Compose/NoteCardView.swift     the paper card (pose + single-view content)
+  Compose/KeyboardOverlapPadding.swift  iOS 26 keyboard safe-area fix
 SoftNotesUITests/                UI tests + screenshot/video tooling (see CLAUDE.md)
 scripts/                         ui-shots.sh, video-disc-track.py, video-ring-track.py, fab-morph-stats.py
 ```
@@ -44,7 +46,7 @@ scripts/                         ui-shots.sh, video-disc-track.py, video-ring-tr
 | Ink / FAB | `#17161A` |
 | Toggle on | `#E2DAFF` bg, `#7B6FE0` text; 116 × 46 pt, 40 pt knob |
 | Pastels (back tile) | pink `#F77696`, blue `#5A9AF6`, lavender `#9E81F6`, orange `#FB9A4B`, green `#63C36C`, yellow `#FFBF55`, indigo `#837AF1` (calibrated to the reference picker) |
-| Note paper | `#FBF8EE` |
+| Note paper | `#FFFDFA`, tag chip `#F5EFE5`; card 236×258 pt, −3° at rest, ×1.2 / −1.5° while typing |
 | Progress arc | amber `#F5B74A` |
 | Folder | 235 × 174 pt front (25 pt tab, flat top to 0.38 of width + 27 pt curve), back panel 221 pt, chips 48 pt, count bubble 46 pt |
 | Rows | 16 pt screen inset (header text at 20), radius 20, ~58 pt tall, 6 pt gap, 40 pt icon 8 pt from the edge, title 16 pt medium |

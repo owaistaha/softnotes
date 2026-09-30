@@ -50,6 +50,15 @@ final class SoftNotesUITests: XCTestCase {
         captureSequence(prefix)
     }
 
+    /// The write step auto-focuses and hides the nav while typing; press
+    /// Done (Return) so Back / × are reachable again.
+    private func leaveTextFieldIfFocused() {
+        guard app.keyboards.firstMatch.waitForExistence(timeout: 2) else { return }
+        app.descendants(matching: .any)["noteText"].typeText("\n")
+        _ = app.buttons["composeBack"].waitForExistence(timeout: 2)
+        Thread.sleep(forTimeInterval: 0.5)
+    }
+
     // MARK: - Tests
 
     /// + → Next morph: tap the FAB, capture; tap close, capture.
@@ -92,6 +101,7 @@ final class SoftNotesUITests: XCTestCase {
         snap("14_step2_settled")
 
         // Back → step 1, selection preserved.
+        leaveTextFieldIfFocused()
         app.buttons["composeBack"].tap()
         captureSequence("15_back")
         XCTAssertTrue(app.staticTexts["Step 1 of 2"].waitForExistence(timeout: 3))
@@ -110,6 +120,7 @@ final class SoftNotesUITests: XCTestCase {
         app.buttons["iconCell_7"].tap()
         app.buttons["primaryAction"].tap()
         XCTAssertTrue(app.staticTexts["Step 2 of 2"].waitForExistence(timeout: 3))
+        leaveTextFieldIfFocused()
         app.buttons["composeClose"].tap()
         XCTAssertTrue(app.buttons["primaryAction"].waitForExistence(timeout: 3))
         Thread.sleep(forTimeInterval: 0.8)
@@ -137,6 +148,7 @@ final class SoftNotesUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 2.0)
         app.buttons["primaryAction"].tap()                     // step 1 → 2
         Thread.sleep(forTimeInterval: 2.0)
+        leaveTextFieldIfFocused()
         app.buttons["composeBack"].tap()                       // step 2 → 1
         Thread.sleep(forTimeInterval: 2.0)
     }
@@ -169,5 +181,95 @@ final class SoftNotesUITests: XCTestCase {
         app.buttons["primaryAction"].tap()
         XCTAssertTrue(app.staticTexts["Step 2 of 2"].waitForExistence(timeout: 3))
         XCTAssertFalse(app.buttons["primaryAction"].isEnabled, "Next must be disabled while the note is empty")
+    }
+
+    // MARK: - Step 4 (write)
+
+    private var noteText: XCUIElement { app.descendants(matching: .any)["noteText"] }
+
+    private func openWriteStep(pickIcon index: Int? = nil) {
+        app.buttons["primaryAction"].tap()
+        XCTAssertTrue(app.buttons["iconCell_0"].waitForExistence(timeout: 5))
+        if let index { app.buttons["iconCell_\(index)"].tap() }
+        app.buttons["primaryAction"].tap()
+        XCTAssertTrue(app.staticTexts["Step 2 of 2"].waitForExistence(timeout: 3))
+    }
+
+    private func element(labelContaining parts: [String]) -> XCUIElement {
+        let format = parts.map { _ in "label CONTAINS %@" }.joined(separator: " AND ")
+        return app.descendants(matching: .any).matching(NSPredicate(format: format, argumentArray: parts)).firstMatch
+    }
+
+    /// Type a note on the software keyboard, Next → it lands on Home.
+    func testWriteAndSave() {
+        XCTAssertTrue(element(labelContaining: ["8 notes"]).exists, "Home should start with 8 notes")
+        openWriteStep()
+        snap("30_write_rest")
+
+        // Auto-focus: the software keyboard appears without a tap.
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3),
+                      "software keyboard should appear (hardware keyboard must be disconnected)")
+        Thread.sleep(forTimeInterval: 0.6)
+        snap("31_write_focused")
+        XCTAssertFalse(app.buttons["primaryAction"].isEnabled, "Next disabled while empty")
+
+        noteText.typeText("Have a good day")
+        Thread.sleep(forTimeInterval: 0.4)
+        snap("32_write_typed")
+        XCTAssertTrue(app.buttons["primaryAction"].isEnabled)
+
+        app.buttons["primaryAction"].tap()
+        XCTAssertTrue(element(labelContaining: ["Have a good day", "Just now"]).waitForExistence(timeout: 5),
+                      "new row should appear in Recent")
+        XCTAssertTrue(element(labelContaining: ["9 notes"]).waitForExistence(timeout: 3), "count should go 8 → 9")
+        Thread.sleep(forTimeInterval: 1.2)
+        snap("33_home_after_save")
+    }
+
+    /// The tag chip cycles Daily → Work → Errands → Ideas → Daily.
+    func testTagChipCycles() {
+        openWriteStep()
+        let chip = app.buttons["tagChip"]
+        XCTAssertTrue(chip.waitForExistence(timeout: 3))
+        for expected in ["Work", "Errands", "Ideas", "Daily"] {
+            chip.tap()
+            XCTAssertEqual(chip.label, "Tag: \(expected)")
+        }
+    }
+
+    /// Text is capped at 48 characters and still fits the card's 4 lines.
+    func testTextCapAndFit() {
+        openWriteStep()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+        let sentence = "Pick up the dry cleaning and call mum back about Sunday lunch plans ok"  // 70 chars
+        // One key at a time (human pace); a single typeText burst outruns the
+        // field's resync and isn't how people type.
+        for character in sentence { noteText.typeText(String(character)) }
+        Thread.sleep(forTimeInterval: 0.3)
+        let value = (noteText.value as? String) ?? ""
+        XCTAssertEqual(value.count, 48, "text should be capped at 48 characters, got \(value.count)")
+        snap("40_cap_typical")
+
+        // Worst case for width: wide capitals.
+        noteText.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 48))
+        for character in String(repeating: "WOW ", count: 13) { noteText.typeText(String(character)) }
+        Thread.sleep(forTimeInterval: 0.3)
+        XCTAssertEqual(((noteText.value as? String) ?? "").count, 48)
+        snap("41_cap_wide")
+    }
+
+    /// Video only: keyboard rise, typing, save. `VIDEO=1 scripts/ui-shots.sh testWriteMotionForVideo`
+    func testWriteMotionForVideo() {
+        Thread.sleep(forTimeInterval: 1.0)
+        openWriteStep()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 4))
+        Thread.sleep(forTimeInterval: 1.0)
+        for word in ["Have ", "a ", "good ", "day"] {
+            noteText.typeText(word)
+            Thread.sleep(forTimeInterval: 0.25)
+        }
+        Thread.sleep(forTimeInterval: 1.0)
+        app.buttons["primaryAction"].tap()
+        Thread.sleep(forTimeInterval: 2.5)
     }
 }

@@ -22,7 +22,10 @@ enum Theme {
         /// Progress arc around the Next button in the compose flow.
         static let amber         = Color(hex: 0xF5B74A)
         /// Paper colour of the note card in the compose flow.
-        static let paper         = Color(hex: 0xFBF8EE)
+        static let paper         = Color(hex: 0xFFFDFA)   // sampled at 6.95 s (was a cream #FBF8EE)
+        /// Tag chip on the paper card, and the card's faint ruled lines.
+        static let paperTag      = Color(hex: 0xF5EFE5)
+        static let paperRule     = Color.black.opacity(0.06)
         /// Crisp 1pt edge on small round surfaces (count bubble).
         static let hairline      = Color.black.opacity(0.06)
     }
@@ -83,6 +86,9 @@ enum Theme {
         static let bouncy = Animation.spring(duration: 0.6, bounce: 0.38)
         /// Returning from a drag (folder tilt).
         static let release = Animation.spring(duration: 0.7, bounce: 0.45)
+        /// Layout that follows the software keyboard (write step). Close to
+        /// the keyboard's own ~0.35 s curve, so the card and keys move together.
+        static let keyboard = Animation.spring(duration: 0.4, bounce: 0)
     }
 }
 
@@ -152,6 +158,11 @@ extension Font {
     static let softBody       = Font.system(size: 15, weight: .regular)
     static let softCaption    = Font.system(size: 13, weight: .regular)
     static let softTabLabel   = Font.system(size: 12, weight: .medium)
+    // Paper note card (04 Write a chit) — measured from the reference.
+    static let softNoteText    = Font.system(size: 24, weight: .semibold)
+    static let softNoteHeading = Font.system(size: 13, weight: .semibold)
+    static let softNoteMeta    = Font.system(size: 11, weight: .regular)
+    static let softNoteTag     = Font.system(size: 11, weight: .medium)
 }
 
 // MARK: - Helpers

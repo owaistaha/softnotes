@@ -57,6 +57,8 @@ struct RootContainerView: View {
             .zIndex(1)
         }
         .environment(store)
+        // The write step hides the status bar while typing (reference).
+        .statusBarHidden(isComposing && draft.isEditingText)
         .onPreferenceChange(FolderFrameKey.self) { folderFrame = $0 }
         .sensoryFeedback(.success, trigger: store.count) { old, new in new > old }
     }

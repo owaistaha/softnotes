@@ -17,6 +17,10 @@ import SwiftUI
 /// rest. The nav/Next themselves live in `ComposeFlowView`.
 struct WriteStep: View {
     @Bindable var draft: ComposeDraft
+    /// Save/fold progress (driven by the container's timeline). Once it
+    /// leaves `.idle` the fold overlay owns the card; this step only drops
+    /// the keyboard and, at `.clear`, fades its title.
+    var foldPhase: FoldPhase = .idle
     @FocusState private var isFocused: Bool
     @State private var hasEntered = false
 
@@ -39,6 +43,10 @@ struct WriteStep: View {
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(.isHeader)
             .padding(.top, 28.5)
+            // Save: blurs away upward with the nav (reference ≈0.2 s).
+            .blur(radius: isClearing ? 8 : 0)
+            .opacity(isClearing ? 0 : 1)
+            .offset(y: isClearing ? -12 : 0)
 
             card
                 // 65pt under the title (reference). While editing the ×1.2
@@ -63,7 +71,13 @@ struct WriteStep: View {
             if !Task.isCancelled { isFocused = true }
         }
         .onDisappear { draft.isEditingText = false }
+        // Next was tapped: the keyboard drops as the card flies to the centre.
+        .onChange(of: foldPhase) { _, phase in
+            if phase != .idle { isFocused = false }
+        }
     }
+
+    private var isClearing: Bool { foldPhase >= .clear }
 
     /// Enforces the cap (and strips Return) as the user types. Two SwiftUI
     /// pitfalls, both caught by `testTextCapAndFit`: truncating in `onChange`
@@ -108,6 +122,13 @@ struct WriteStep: View {
             .focused($isFocused)
             .accessibilityIdentifier("noteText")
         })
+        // Where the fold starts from (layout frame; the pose is re-applied there).
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { draft.cardFrame = $0 }
+        // The fold overlay takes over in the same frame — hide instantly. The
+        // tap's transaction carries the settle spring, which would otherwise
+        // fade this copy out *behind* the flying card (seen on video).
+        .opacity(foldPhase == .idle ? 1 : 0)
+        .transaction(value: foldPhase == .idle) { $0.animation = nil }
         // Tapping anywhere on the card focuses the field (the reference taps it).
         .contentShape(Rectangle())
         .onTapGesture { isFocused = true }

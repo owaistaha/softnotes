@@ -16,6 +16,10 @@ struct ComposeFlowView: View {
     let folderFrame: CGRect
     let draft: ComposeDraft
     let isPresented: Bool
+    /// Save/fold progress, driven by the container's timeline (read-only here):
+    /// the nav comes back as the keyboard drops, then at `.clear` the nav
+    /// blurs away and Next drops off the bottom.
+    var foldPhase: FoldPhase = .idle
     var onClose: () -> Void
     var onSave: (Note) -> Void
 
@@ -29,9 +33,11 @@ struct ComposeFlowView: View {
                         onBack: back,
                         onClose: onClose
                     )
-                    // While typing, the nav slides up and away (reference).
-                    .offset(y: draft.isEditingText ? -110 : 0)
-                    .opacity(draft.isEditingText ? 0 : 1)
+                    // While typing, the nav slides up and away (reference);
+                    // on save it blurs away with the title.
+                    .offset(y: draft.isEditingText ? -110 : isClearing ? -12 : 0)
+                    .opacity(draft.isEditingText || isClearing ? 0 : 1)
+                    .blur(radius: isClearing ? 8 : 0)
                     .allowsHitTesting(!draft.isEditingText)
 
                     ZStack {
@@ -39,7 +45,7 @@ struct ComposeFlowView: View {
                         case .pickIcon:
                             IconPickerStep(draft: draft).transition(.blurFade)
                         case .write, .save:
-                            WriteStep(draft: draft).transition(.blurFade)
+                            WriteStep(draft: draft, foldPhase: foldPhase).transition(.blurFade)
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -61,10 +67,15 @@ struct ComposeFlowView: View {
                         action: next
                     )
                     .disabled(!nextEnabled)
-                    .opacity(nextEnabled ? 1 : 0.35)
-                    .animation(Theme.Motion.snappy, value: nextEnabled)
+                    .opacity(nextLooksEnabled ? 1 : 0.35)
+                    .animation(Theme.Motion.snappy, value: nextLooksEnabled)
                     .matchedGeometryEffect(id: FlowID.primaryAction, in: flowNamespace)
                     .padding(.bottom, nextBottomGap)
+                    // Save: Next drops off the bottom edge, blurring, still
+                    // dark (reference: half off-screen after ≈70 ms, gone ≈120).
+                    .blur(radius: isClearing ? 4 : 0)
+                    .offset(y: isClearing ? 150 : 0)
+                    .animation(Theme.Motion.drop, value: isClearing)
                 }
                 // See `PrimaryActionButton.morphTransition` — must sit on the
                 // view that is actually inserted/removed (this container).
@@ -72,8 +83,11 @@ struct ComposeFlowView: View {
             }
         }
         .keyboardOverlapPadding()
-        .allowsHitTesting(isPresented)
+        // Nothing is tappable once the save sequence has started.
+        .allowsHitTesting(isPresented && foldPhase == .idle)
     }
+
+    private var isClearing: Bool { foldPhase >= .clear }
 
     /// Next sits 4pt above the home indicator area normally, and ≈22pt above
     /// the keyboard while typing (reference: centre 58pt above the keys).
@@ -96,10 +110,9 @@ struct ComposeFlowView: View {
         case .pickIcon:
             withAnimation(Theme.Motion.smooth) { _ = draft.advance() }
         case .write:
-            // Files the note; Home runs its landing choreography. Step 5
-            // layers the save → fold → file-away in front of this.
+            // Hands the note to the container, which runs the save → fold
+            // timeline (and then files it on Home).
             if draft.canAdvance {
-                draft.isEditingText = false
                 onSave(draft.makeNote())
             } else if Self.demoSaveEnabled {
                 onSave(demoNote())
@@ -112,6 +125,10 @@ struct ComposeFlowView: View {
     private var nextEnabled: Bool {
         draft.step == .write ? (draft.canAdvance || Self.demoSaveEnabled) : draft.canAdvance
     }
+
+    /// During the save phase Next can't be tapped but keeps its full colour
+    /// (its arc completing is part of the sequence).
+    private var nextLooksEnabled: Bool { nextEnabled || draft.step == .save }
 
     /// DEBUG-only launch argument `-demoSave`: Next on the write step files a
     /// demo note (with the icon picked in step 1) so Home's save choreography

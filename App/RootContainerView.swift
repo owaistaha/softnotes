@@ -12,7 +12,8 @@ import SwiftUI
 ///   ├─ canvas
 ///   ├─ tab content (Home | Saved) ── recedes + blurs while composing
 ///   │    └─ safeAreaInset(bottom): FloatingTabBar (+ FAB)
-///   └─ ComposeFlowView (when composing)
+///   ├─ ComposeFlowView (when composing)
+///   └─ FoldStage — the save → fold overlay (full-screen, global space)
 struct RootContainerView: View {
     @State private var store = NotesStore()
     @State private var selectedTab: AppTab = .home
@@ -21,6 +22,12 @@ struct RootContainerView: View {
     @State private var folderFrame: CGRect = .zero
     /// Fresh for every compose session (see `startComposing`).
     @State private var draft = ComposeDraft()
+    /// Save → fold progress; advanced ONLY by `save(_:)` (the timeline).
+    @State private var foldPhase: FoldPhase = .idle
+    /// What the fold overlay draws (nil = nothing folding).
+    @State private var foldCard: FoldCard?
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @Namespace private var flowNamespace
 
@@ -30,8 +37,8 @@ struct RootContainerView: View {
                 .ignoresSafeArea()
 
             tabContent
-                .scaleEffect(isComposing ? 0.94 : 1)
-                .blur(radius: isComposing ? 14 : 0)
+                .scaleEffect(isComposing && !reduceMotion ? 0.94 : 1)
+                .blur(radius: isComposing && !reduceMotion ? 14 : 0)
                 .opacity(isComposing ? 0 : 1)
                 .allowsHitTesting(!isComposing)
                 .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -51,16 +58,22 @@ struct RootContainerView: View {
                 folderFrame: folderFrame,
                 draft: draft,
                 isPresented: isComposing,
+                foldPhase: foldPhase,
                 onClose: cancelComposing,
-                onSave: file
+                onSave: save
             )
             .zIndex(1)
+
+            // Always mounted: it animates its own progress values (see FoldStage).
+            FoldStage(card: foldCard, phase: foldPhase)
+                .zIndex(2)
         }
         .environment(store)
         // The write step hides the status bar while typing (reference).
         .statusBarHidden(isComposing && draft.isEditingText)
         .onPreferenceChange(FolderFrameKey.self) { folderFrame = $0 }
         .sensoryFeedback(.success, trigger: store.count) { old, new in new > old }
+        .task { await runDemoFoldIfRequested() }
     }
 
     @ViewBuilder
@@ -91,6 +104,66 @@ struct RootContainerView: View {
         withAnimation(Theme.Motion.smooth) { isComposing = false }
     }
 
+    /// 05 Save → 06 Fold: THE timeline — the only place `foldPhase` moves.
+    /// Times are `FoldTimeline` (ms after the Next tap, from the reference),
+    /// animations are `Theme.Motion`; the views derive everything else from
+    /// the phase. Step 5A ends with the card folded on top of compose and
+    /// then hands the note to `file(_:)`; 5B replaces that hand-off with the
+    /// camera push and the drop into the folder.
+    private func save(_ note: Note) {
+        guard foldPhase == .idle, foldCard == nil else { return }
+        if reduceMotion {
+            fileWithCrossFade(note)
+            return
+        }
+        let card = FoldCard(note: note, date: draft.createdAt, sourceFrame: draft.cardFrame,
+                            sourcePose: draft.isEditingText ? .editing : .resting)
+        let draft = draft
+
+        Task { @MainActor in
+            let clock = ContinuousClock()
+            let start = clock.now
+            func at(_ ms: Int) async { try? await clock.sleep(until: start + .milliseconds(ms)) }
+
+            // Settle: the overlay takes the card exactly where it is (the
+            // write step hides its own in the same frame), the keyboard drops,
+            // the nav comes back, the card flies to the centre and straightens.
+            withAnimation(Theme.Motion.settle) {
+                foldCard = card
+                foldPhase = .settle
+                draft.isEditingText = false
+            }
+            await at(FoldTimeline.arcComplete)
+            withAnimation(Theme.Motion.smooth) { draft.step = .save }   // arc 2/3 → full
+            await at(FoldTimeline.lift)
+            withAnimation(Theme.Motion.lift) { foldPhase = .lift }
+            await at(FoldTimeline.clear)
+            withAnimation(Theme.Motion.clear) { foldPhase = .clear }
+            await at(FoldTimeline.fold)
+            withAnimation(Theme.Motion.fold) { foldPhase = .fold }
+            await at(FoldTimeline.folded)
+            foldPhase = .folded
+
+            // 5A hand-off: Home files the note; the folded card fades out.
+            await at(FoldTimeline.handOff)
+            file(note)
+            withAnimation(Theme.Motion.crossFade) { foldCard = nil }
+            try? await Task.sleep(for: .seconds(FoldTimeline.reducedDuration + 0.05))
+            foldPhase = .idle                   // no animation: nothing is drawn now
+        }
+    }
+
+    /// Reduce Motion: no flight, no fold — compose cross-fades to Home and the
+    /// note is simply there (the count still rolls).
+    private func fileWithCrossFade(_ note: Note) {
+        selectedTab = .home
+        draft.isEditingText = false
+        withAnimation(Theme.Motion.crossFade) {
+            isComposing = false
+            store.add(note)
+        }
+    }
+
     /// Home-side choreography after a save (timings from the reference):
     /// 1. compose recedes, Home returns with the folder open (toggle off)
     /// 2. the note lands: chip drops into the centre slot, count rolls, new
@@ -111,6 +184,26 @@ struct RootContainerView: View {
             try? await Task.sleep(for: .milliseconds(380))
             withAnimation(Theme.Motion.snappy) { isFolderOpen = false }
         }
+    }
+}
+
+// MARK: - DEBUG launch arguments
+
+extension RootContainerView {
+    /// `-demoFold`: opens compose on the write step with "Have a good day"
+    /// typed, waits for the keyboard (auto-focus), then runs the save → fold
+    /// timeline exactly as Next would — for recording without typing.
+    private func runDemoFoldIfRequested() async {
+        #if DEBUG
+        guard ProcessInfo.processInfo.arguments.contains("-demoFold") else { return }
+        try? await Task.sleep(for: .milliseconds(600))
+        startComposing()
+        draft.step = .write
+        draft.text = "Have a good day"
+        // Write step enters, auto-focuses at 0.85 s, keyboard ≈0.5 s later.
+        try? await Task.sleep(for: .milliseconds(2600))
+        save(draft.makeNote())
+        #endif
     }
 }
 

@@ -39,6 +39,10 @@ final class ComposeDraft {
     /// True while the write step's text field has focus (keyboard up). The
     /// flow uses it to slide the nav away and hide the status bar.
     var isEditingText = false
+    /// The write step's card: its unposed layout frame in global coordinates,
+    /// kept current by `WriteStep`. The fold starts from exactly here. Not
+    /// observed — nothing redraws when it changes.
+    @ObservationIgnored var cardFrame: CGRect = .zero
 
     // MARK: Derived
 

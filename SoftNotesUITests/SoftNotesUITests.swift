@@ -272,4 +272,34 @@ final class SoftNotesUITests: XCTestCase {
         app.buttons["primaryAction"].tap()
         Thread.sleep(forTimeInterval: 2.5)
     }
+
+    // MARK: - Step 5A (save + fold)
+
+    private func relaunch(_ arguments: [String]) {
+        app.terminate()
+        app.launchArguments = arguments
+        app.launch()
+    }
+
+    /// `-demoFold`: compose opens on the write step with "Have a good day"
+    /// typed, the keyboard comes up, and the save → fold timeline runs by
+    /// itself (≈3.2 s after launch); after the fold Home files the note.
+    /// Record it: `VIDEO=1 scripts/ui-shots.sh testDemoFold`.
+    func testDemoFold() {
+        relaunch(["-demoFold"])
+        XCTAssertTrue(element(labelContaining: ["Have a good day", "Just now"]).waitForExistence(timeout: 10),
+                      "folded note should be filed into Recent")
+        XCTAssertTrue(element(labelContaining: ["9 notes"]).waitForExistence(timeout: 3), "count should go 8 → 9")
+        Thread.sleep(forTimeInterval: 1.0)
+        snap("50_demo_fold_home")
+    }
+
+    /// Reduce Motion (`-reduceMotion`, DEBUG): no flight, no fold — compose
+    /// cross-fades straight to Home with the note filed.
+    func testReduceMotionSave() {
+        relaunch(["-demoFold", "-reduceMotion"])
+        XCTAssertTrue(element(labelContaining: ["Have a good day", "Just now"]).waitForExistence(timeout: 10))
+        XCTAssertTrue(element(labelContaining: ["9 notes"]).exists, "count should go 8 → 9")
+        snap("51_reduce_motion_home")
+    }
 }

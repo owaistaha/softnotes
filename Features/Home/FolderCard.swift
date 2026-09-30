@@ -20,19 +20,35 @@ struct FolderCard: View {
     let count: Int
     let previews: [Note]
     @Binding var isOpen: Bool
+    /// The note whose icon is being handed over by the save flight: its chip
+    /// appears in place with no drop-in transition (the flying icon *is* it
+    /// until that frame).
+    var landingNoteID: Note.ID? = nil
     var onTap: () -> Void = {}
 
     @State private var tilt: CGSize = .zero
 
     // Geometry measured from the reference (points, 393pt-wide phone).
-    private let width: CGFloat = 235
-    private let height: CGFloat = 276
-    private let frontHeight: CGFloat = 174      // incl. 25pt tab
-    private let tabHeight: CGFloat = 25
+    // Static so the save flight can aim at it from the folder's frame alone.
+    static let size = CGSize(width: 235, height: 276)
+    static let frontHeight: CGFloat = 174      // incl. 25pt tab
+    static let tabHeight: CGFloat = 25
     /// How far the back panel peeks above the front panel's body.
-    private let backPeek: CGFloat = 43
-    private var frontTop: CGFloat { height - frontHeight }        // 102
-    private var bodyTop: CGFloat { frontTop + tabHeight }          // 127
+    static let backPeek: CGFloat = 43
+    static var frontTop: CGFloat { size.height - frontHeight }     // 102
+    static var bodyTop: CGFloat { frontTop + tabHeight }           // 127
+    static let chipSize: CGFloat = 48
+    /// Chips lift this much while the folder is open.
+    static let openLift: CGFloat = 14
+    static let chipFloat: CGFloat = 2.5
+
+    private var width: CGFloat { Self.size.width }
+    private var height: CGFloat { Self.size.height }
+    private var frontHeight: CGFloat { Self.frontHeight }
+    private var tabHeight: CGFloat { Self.tabHeight }
+    private var backPeek: CGFloat { Self.backPeek }
+    private var frontTop: CGFloat { Self.frontTop }
+    private var bodyTop: CGFloat { Self.bodyTop }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -64,6 +80,8 @@ struct FolderCard: View {
         .sensoryFeedback(.impact(weight: .light), trigger: isOpen)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Notes folder, \(count) notes")
+        .accessibilityValue(isOpen ? "Open" : "Closed")
+        .accessibilityIdentifier("folder")
     }
 
     // MARK: Back panel
@@ -98,22 +116,21 @@ struct FolderCard: View {
     private var chips: some View {
         ZStack(alignment: .topLeading) {
             ForEach(Array(previews.enumerated()), id: \.element.id) { index, note in
-                let slot = chipSlot(index)
-                StackedIconView(icon: note.icon, size: 48)
+                let slot = Self.chipSlot(index)
+                StackedIconView(icon: note.icon, size: Self.chipSize)
                     .rotationEffect(.degrees(slot.rotation))
-                    .idleFloat(amplitude: 2.5, period: 2.4 + Double(index) * 0.45)
+                    .idleFloat(amplitude: Self.chipFloat, period: 2.4 + Double(index) * 0.45)
                     // Chips are "closer" to the viewer than the folder → parallax
                     .offset(x: tilt.width * 0.9, y: -tilt.height * 0.9)
                     .position(
                         x: slot.point.x,
                         y: slot.point.y + (isOpen ? -14 : 0)
                     )
-                    .transition(
-                        .asymmetric(
-                            insertion: .offset(y: -60).combined(with: .scale(scale: 0.4)).combined(with: .opacity),
-                            removal: .offset(y: 50).combined(with: .opacity)
-                        )
-                    )
+                    .transition(note.id == landingNoteID ? .identity : Self.chipTransition)
+                    // Newest on top: the chip that just landed must never pass
+                    // behind the old centre chip shuffling out (video: it hid
+                    // the hand-off for 3 frames).
+                    .zIndex(Double(previews.count - index))
             }
         }
         .frame(width: width, height: height)
@@ -121,13 +138,37 @@ struct FolderCard: View {
         .animation(Theme.Motion.bouncy, value: isOpen)
     }
 
-    private func chipSlot(_ index: Int) -> (point: CGPoint, rotation: Double) {
+    private static var chipTransition: AnyTransition {
+        .asymmetric(
+            insertion: .offset(y: -60).combined(with: .scale(scale: 0.4)).combined(with: .opacity),
+            removal: .offset(y: 50).combined(with: .opacity)
+        )
+    }
+
+    /// Chip slot in the folder's own coordinates (closed, before idle float).
+    static func chipSlot(_ index: Int) -> (point: CGPoint, rotation: Double) {
         switch index {
         // Centre (newest) sits lowest, overlapping the back panel's top edge.
-        case 0:  (CGPoint(x: width / 2 + 9,  y: bodyTop - 58), 0)
-        case 1:  (CGPoint(x: width / 2 - 71, y: bodyTop - 62), -8)    // left
-        default: (CGPoint(x: width / 2 + 64, y: bodyTop - 95), 6)     // right, highest
+        case 0:  (CGPoint(x: size.width / 2 + 9,  y: bodyTop - 58), 0)
+        case 1:  (CGPoint(x: size.width / 2 - 71, y: bodyTop - 62), -8)    // left
+        default: (CGPoint(x: size.width / 2 + 64, y: bodyTop - 95), 6)     // right, highest
         }
+    }
+
+    /// Where a chip is drawn for a folder laid out at `folderFrame` (any
+    /// coordinate space, unscaled): slot + open lift. `floatStart` adds where
+    /// a freshly inserted chip's idle float begins (its first phase is down).
+    static func chipCenter(_ index: Int, in folderFrame: CGRect, isOpen: Bool,
+                           floatStart: Bool = false) -> CGPoint {
+        let slot = chipSlot(index).point
+        return CGPoint(x: folderFrame.minX + slot.x,
+                       y: folderFrame.minY + slot.y - (isOpen ? openLift : 0) + (floatStart ? chipFloat : 0))
+    }
+
+    /// The front panel's frame (its outline is `FolderShape`, tab included).
+    static func frontPanelFrame(in folderFrame: CGRect) -> CGRect {
+        CGRect(x: folderFrame.minX, y: folderFrame.minY + frontTop,
+               width: size.width, height: frontHeight)
     }
 
     // MARK: Front panel
@@ -153,6 +194,7 @@ struct FolderCard: View {
                     get: { !isOpen },
                     set: { isOpen = !$0 }
                 ))
+                .accessibilityIdentifier("folderToggle")
             }
             .padding(15)
         }

@@ -14,6 +14,13 @@ import SwiftUI
 struct HomeView: View {
     @Environment(NotesStore.self) private var store
     @Binding var isFolderOpen: Bool
+    /// Header + Recent. Hidden while the save flight has Home zoomed on the
+    /// folder; they blur back in with the zoom-out.
+    var showsChrome: Bool = true
+    /// A just-filed note whose row is held back from Recent (it enters later).
+    var heldNoteID: Note.ID? = nil
+    /// The note whose chip the save flight hands over (appears in place).
+    var landingNoteID: Note.ID? = nil
     var onSearch: () -> Void = {}
     var onSeeAll: () -> Void = {}
     var onOpenFolder: () -> Void = {}
@@ -25,11 +32,13 @@ struct HomeView: View {
                 ScreenHeader(title: "Notes", onSearch: onSearch)
                     .padding(.horizontal, Theme.Metrics.listTextInset)
                     .padding(.top, 8)
+                    .modifier(ChromeVisibility(isVisible: showsChrome))
 
                 FolderCard(
                     count: store.count,
                     previews: store.folderPreview,
                     isOpen: $isFolderOpen,
+                    landingNoteID: landingNoteID,
                     onTap: onOpenFolder
                 )
                 // Report the folder's on-screen frame so the compose flow can
@@ -43,11 +52,12 @@ struct HomeView: View {
                 .padding(.top, 14)
 
                 RecentNotesSection(
-                    notes: store.recent,
+                    notes: store.recent.filter { $0.id != heldNoteID },
                     onSeeAll: onSeeAll,
                     onSelect: onSelectNote
                 )
                 .padding(.top, 28)
+                .modifier(ChromeVisibility(isVisible: showsChrome))
             }
             // Rows run wider than the header text (per reference).
             .padding(.horizontal, Theme.Metrics.listInset)
@@ -55,6 +65,18 @@ struct HomeView: View {
         }
         .scrollIndicators(.hidden)
         .scrollBounceBehavior(.basedOnSize)
+    }
+}
+
+/// Header / Recent fading and focusing back in after the save's zoom-out.
+private struct ChromeVisibility: ViewModifier {
+    var isVisible: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(isVisible ? 1 : 0)
+            .blur(radius: isVisible ? 0 : 8)
+            .animation(Theme.Motion.chromeIn, value: isVisible)
     }
 }
 

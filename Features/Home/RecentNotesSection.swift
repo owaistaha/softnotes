@@ -28,10 +28,11 @@ struct RecentNotesSection: View {
                     .transition(.blurSlide)
             } else {
                 VStack(spacing: Theme.Metrics.rowSpacing) {
-                    ForEach(notes) { note in
+                    ForEach(Array(notes.enumerated()), id: \.element.id) { index, note in
                         NoteRow(note: note) { onSelect(note) }
                             // New notes arrive from the top with a soft focus-pull
                             .transition(.blurSlide)
+                            .accessibilityIdentifier("recentRow_\(index)")
                     }
                 }
             }

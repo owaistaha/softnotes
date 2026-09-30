@@ -17,15 +17,25 @@ struct StackedIconView: View {
     /// Scales the tone-coloured glow under the tiles (1 = default). Small
     /// containers (picker cells) turn it down so it doesn't wash the surface.
     var glow: CGFloat = 1
+    /// Continuous corner radius as a fraction of `size`, overriding the shape
+    /// (0.28 = the squircle, 0.5 ≈ a circle). The save flight morphs the
+    /// header's squircle into the chip's own shape with it.
+    var cornerFraction: CGFloat? = nil
+
+    /// Squircle corner radius as a fraction of the size.
+    static let squircleCorner: CGFloat = 0.28
 
     private var shape: IconShape { shapeOverride ?? icon.shape }
 
     private var clip: AnyShape {
+        if let cornerFraction {
+            return AnyShape(RoundedRectangle(cornerRadius: size * cornerFraction, style: .continuous))
+        }
         switch shape {
         case .circle:
-            AnyShape(Circle())
+            return AnyShape(Circle())
         case .squircle:
-            AnyShape(RoundedRectangle(cornerRadius: size * 0.28, style: .continuous))
+            return AnyShape(RoundedRectangle(cornerRadius: size * Self.squircleCorner, style: .continuous))
         }
     }
 

@@ -303,6 +303,64 @@ final class SoftNotesUITests: XCTestCase {
         XCTAssertTrue(summary.contains("stalls=0 "), "main-thread stalls: \(summary)")
     }
 
+    /// Home on a short screen (iPhone SE): once a save makes Recent three
+    /// rows, Home is taller than the screen and scrolls. A vertical drag that
+    /// starts on the folder must scroll it like a drag anywhere else (it used
+    /// to be swallowed by the folder's tilt). Control: the same drag starting
+    /// on "Recent". Where Home fits (standard phones) neither scrolls.
+    /// `SIM_NAME="iPhone SE (3rd generation)" SIM_OS=26.5 scripts/ui-shots.sh testFolderDragScrollsOnShortScreens`
+    func testFolderDragScrollsOnShortScreens() {
+        relaunch(["-demoFold"])
+        waitOutDemoKeyboard()
+        waitForSaveToFinish()
+        Thread.sleep(forTimeInterval: 1.0)
+        let folder = app.otherElements["folder"]
+        let recent = app.staticTexts["Recent"]
+        XCTAssertTrue(folder.waitForExistence(timeout: 5))
+
+        func dragUp(from element: XCUIElement) -> CGFloat {
+            let before = folder.frame.minY
+            let start = element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            start.press(forDuration: 0.01, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -200)),
+                        withVelocity: .default, thenHoldForDuration: 0.2)
+            Thread.sleep(forTimeInterval: 0.8)
+            return before - folder.frame.minY
+        }
+        func scrollBack() {
+            let start = recent.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            start.press(forDuration: 0.01, thenDragTo: start.withOffset(CGVector(dx: 0, dy: 400)),
+                        withVelocity: .default, thenHoldForDuration: 0.2)
+            Thread.sleep(forTimeInterval: 0.8)
+        }
+
+        let control = dragUp(from: recent)
+        scrollBack()
+        let fromFolder = dragUp(from: folder)
+        snap("60_folder_drag_up")
+        print("FOLDER DRAG: control scrolled \(control)pt, from the folder \(fromFolder)pt")
+        if control > 20 {
+            XCTAssertGreaterThan(fromFolder, control * 0.7, "a vertical drag on the folder should scroll Home too")
+        } else {
+            XCTAssertEqual(fromFolder, 0, accuracy: 1, "Home fits: nothing scrolls")
+        }
+    }
+
+    /// Video only: slow drags on the folder, held — right, then down — to
+    /// check the tilt (chips move with it: parallax = 0.9 × tilt).
+    /// `VIDEO=1 scripts/ui-shots.sh testFolderTiltForVideo`
+    func testFolderTiltForVideo() {
+        let folder = app.otherElements["folder"]
+        XCTAssertTrue(folder.waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 1.0)
+        let centre = folder.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7))
+        centre.press(forDuration: 0.05, thenDragTo: centre.withOffset(CGVector(dx: 150, dy: 0)),
+                     withVelocity: .slow, thenHoldForDuration: 1.0)
+        Thread.sleep(forTimeInterval: 1.5)
+        centre.press(forDuration: 0.05, thenDragTo: centre.withOffset(CGVector(dx: 0, dy: 120)),
+                     withVelocity: .slow, thenHoldForDuration: 1.0)
+        Thread.sleep(forTimeInterval: 1.5)
+    }
+
     // MARK: - Step 5A (save + fold)
 
     private func relaunch(_ arguments: [String]) {

@@ -35,9 +35,19 @@ struct FolderCard: View {
     /// for the note itself, because the landing point is computed for the
     /// folder at rest — bouncing earlier would move the chip off the icon.
     var receivedCount: Int? = nil
+    /// Home scrolls (short screens, e.g. iPhone SE with three Recent rows).
+    /// The tilt's drag then starts only after 20pt, past the scroll view's
+    /// own pan threshold — at 4pt it won every drag and Home could not be
+    /// scrolled from the folder at all (6B, measured with a UI test) — and a
+    /// drag that starts vertical is left to the scroll view (no tilt), so
+    /// the two never fight. Where Home fits, the tilt is unchanged.
+    var sharesDragsWithScroll: Bool = false
     var onTap: () -> Void = {}
 
     @State private var tilt: CGSize = .zero
+    /// Decided on a drag's first movement (scrolling Home only): true =
+    /// vertical, the scroll view's — no tilt for this drag.
+    @State private var dragIsScroll: Bool?
 
     // Geometry measured from the reference (points, 393pt-wide phone).
     // Static so the save flight can aim at it from the folder's frame alone.
@@ -241,18 +251,32 @@ struct FolderCard: View {
     // MARK: Tilt gesture
 
     private var tiltGesture: some Gesture {
-        DragGesture(minimumDistance: 4)
+        DragGesture(minimumDistance: sharesDragsWithScroll ? 20 : 4)
             .onChanged { value in
-                withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.7)) {
-                    tilt = CGSize(
-                        width: (value.translation.width / 10).clamped(to: -14...14),
-                        height: (value.translation.height / 12).clamped(to: -10...10)
-                    )
+                if sharesDragsWithScroll {
+                    let t = value.translation
+                    if dragIsScroll == nil { dragIsScroll = abs(t.height) > abs(t.width) }
+                    if dragIsScroll == true { return }
                 }
+                applyTilt(value.translation)
             }
             .onEnded { _ in
-                withAnimation(Theme.Motion.release) { tilt = .zero }
+                dragIsScroll = nil
+                releaseTilt()
             }
+    }
+
+    private func applyTilt(_ translation: CGSize) {
+        withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.7)) {
+            tilt = CGSize(
+                width: (translation.width / 10).clamped(to: -14...14),
+                height: (translation.height / 12).clamped(to: -10...10)
+            )
+        }
+    }
+
+    private func releaseTilt() {
+        withAnimation(Theme.Motion.release) { tilt = .zero }
     }
 }
 

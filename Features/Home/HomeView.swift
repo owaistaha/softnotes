@@ -27,6 +27,10 @@ struct HomeView: View {
     /// before the flying icon settles (reference), the note is added after.
     var countLead: Int = 0
     var onSearch: () -> Void = {}
+    /// Content vs viewport height — Home scrolls only on short screens.
+    @State private var contentHeight: CGFloat = 0
+    @State private var viewportHeight: CGFloat = 0
+    private var homeScrolls: Bool { contentHeight > viewportHeight + 1 }
     var onSeeAll: () -> Void = {}
     var onOpenFolder: () -> Void = {}
     var onSelectNote: (Note) -> Void = { _ in }
@@ -46,6 +50,7 @@ struct HomeView: View {
                     landingNoteID: landingNoteID,
                     vacatesCentre: vacatesCentreChip,
                     receivedCount: store.count,
+                    sharesDragsWithScroll: homeScrolls,
                     onTap: onOpenFolder
                 )
                 // Report the folder's on-screen frame so the compose flow can
@@ -69,6 +74,12 @@ struct HomeView: View {
             // Rows run wider than the header text (per reference).
             .padding(.horizontal, Theme.Metrics.listInset)
             .padding(.bottom, 32)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height.rounded() } action: { height in
+                if height != contentHeight { contentHeight = height }
+            }
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.height.rounded() } action: { height in
+            if height != viewportHeight { viewportHeight = height }
         }
         .scrollIndicators(.hidden)
         .scrollBounceBehavior(.basedOnSize)

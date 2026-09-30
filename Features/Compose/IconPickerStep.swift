@@ -50,7 +50,7 @@ struct IconPickerStep: View {
 
     private var preview: some View {
         ZStack {
-            StackedIconView(icon: draft.icon, size: 72, shapeOverride: .squircle)
+            StackedIconView(icon: draft.icon, size: 72, shapeOverride: .squircle, glass: .vivid)
                 // New identity per icon → the old one shrinks out, the new one springs in.
                 .id(draft.icon.id)
                 .transition(.scale(scale: 0.6).combined(with: .opacity))
@@ -119,7 +119,7 @@ private struct IconCell: View {
         Button(action: action) {
             // Squircle tiles in every cell (the reference doesn't use the
             // circle variants here), on a white circular surface.
-            StackedIconView(icon: icon, size: 40, shapeOverride: .squircle, glow: 0.5)
+            StackedIconView(icon: icon, size: 40, shapeOverride: .squircle, glow: 0.5, glass: .vivid)
                 .frame(width: Theme.Metrics.pickerCell, height: Theme.Metrics.pickerCell)
                 .clipShape(Circle())   // glow stays inside the white cell
                 .background(SoftSurface(Circle(), elevation: .raised))

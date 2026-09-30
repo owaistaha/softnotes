@@ -21,6 +21,8 @@ struct StackedIconView: View {
     /// (0.28 = the squircle, 0.5 ≈ a circle). The save flight morphs the
     /// header's squircle into the chip's own shape with it.
     var cornerFraction: CGFloat? = nil
+    /// How strongly the front glass is tinted (`Theme.Glass`).
+    var glass: Theme.Glass = .standard
 
     /// Squircle corner radius as a fraction of the size.
     static let squircleCorner: CGFloat = 0.28
@@ -56,7 +58,7 @@ struct StackedIconView: View {
                 clip.fill(.ultraThinMaterial)
                 clip.fill(
                     LinearGradient(
-                        colors: [icon.tone.light.opacity(0.70), icon.tone.light.opacity(0.40)],
+                        colors: [icon.tone.light.opacity(glass.tint.top), icon.tone.light.opacity(glass.tint.bottom)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )

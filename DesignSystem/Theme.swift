@@ -106,6 +106,25 @@ enum Theme {
         static let weight: Font.Weight = .semibold
     }
 
+    /// Tint over the frosted front tile of a stacked icon (top-leading →
+    /// bottom-trailing opacity of the tone's `light` colour).
+    enum Glass {
+        /// Home chips, rows, tabs, card header.
+        case standard
+        /// Icon picker (cells + preview): the reference's picker tiles are
+        /// ≈ the `light` tone itself — mean saturation 58.8 vs 53.2 at the
+        /// standard tint, same lightness. Home rows already read darker than
+        /// the reference, so this is a separate case, not a token change.
+        case vivid
+
+        var tint: (top: Double, bottom: Double) {
+            switch self {
+            case .standard: (0.70, 0.40)
+            case .vivid:    (1.0, 0.95)
+            }
+        }
+    }
+
     /// One place to tune the whole app's physics.
     enum Motion {
         /// Tab pill, toggle knob, small UI state.

@@ -26,6 +26,9 @@ enum Theme {
         /// Tag chip on the paper card, and the card's faint ruled lines.
         static let paperTag      = Color(hex: 0xF5EFE5)
         static let paperRule     = Color.black.opacity(0.06)
+        /// Soft grey rim just inside the folder toggle's track (reference: the
+        /// outer ≈2pt of the lavender track read grey, blue 255 → ≈240).
+        static let toggleRim     = Color(hex: 0xDCDCE0, opacity: 0.5)
         /// Crisp 1pt edge on small round surfaces (count bubble).
         static let hairline      = Color.black.opacity(0.06)
     }
@@ -202,6 +205,9 @@ extension Font {
     static let softBody       = Font.system(size: 15, weight: .regular)
     static let softCaption    = Font.system(size: 13, weight: .regular)
     static let softTabLabel   = Font.system(size: 12, weight: .medium)
+    /// Folder toggle label — measured "Notes" ink 50.2 × 13.8pt (17 medium
+    /// gave 44.0 × 12.3).
+    static let softToggleLabel = Font.system(size: 19, weight: .semibold)
     // Paper note card (04 Write a chit) — measured from the reference.
     static let softNoteText    = Font.system(size: 24, weight: .semibold)
     static let softNoteHeading = Font.system(size: 13, weight: .semibold)

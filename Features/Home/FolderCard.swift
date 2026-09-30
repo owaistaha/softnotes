@@ -310,7 +310,9 @@ struct FolderToggle: View {
     private let knob: CGFloat = 40
     private var knobInset: CGFloat { (size.height - knob) / 2 }
     /// Label keeps clear of the knob on the knob's side.
-    private var knobSide: CGFloat { knob + knobInset + 6 }
+    private var knobSide: CGFloat { knob + knobInset + 3 }
+    /// Label inset on the side away from the knob (ref: ink 15.9pt in).
+    private let labelInset: CGFloat = 15
 
     var body: some View {
         Button {
@@ -322,13 +324,20 @@ struct FolderToggle: View {
                         (isOn ? Theme.Palette.lavenderTint : Theme.Palette.track)
                             .shadow(.inner(color: .black.opacity(0.06), radius: 2, y: 1))
                     )
+                    .overlay {
+                        Capsule()
+                            .strokeBorder(Theme.Palette.toggleRim, lineWidth: 2)
+                            .blur(radius: 0.8)
+                            .clipShape(Capsule())
+                    }
 
                 Text(title)
-                    .font(.system(size: 17, weight: .medium))
+                    .font(.softToggleLabel)
+                    .lineLimit(1)
                     .foregroundStyle(isOn ? Theme.Palette.lavenderInk : Theme.Palette.inkSecondary)
                     .frame(maxWidth: .infinity, alignment: isOn ? .leading : .trailing)
-                    .padding(.leading, isOn ? 16 : knobSide)
-                    .padding(.trailing, isOn ? knobSide : 16)
+                    .padding(.leading, isOn ? labelInset : knobSide)
+                    .padding(.trailing, isOn ? knobSide : labelInset)
 
                 Circle()
                     .fill(.white)

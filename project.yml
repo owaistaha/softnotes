@@ -1,0 +1,38 @@
+name: SoftNotes
+options:
+  bundleIdPrefix: com.owaistaha
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  SoftNotes:
+    type: application
+    platform: iOS
+    sources:
+      # Sources currently live flat at the repo root (not in App/, DesignSystem/,
+      # etc.). Only .swift files are included so docs, the reference video and
+      # build output stay out of the target. Subfolders added later
+      # (e.g. Features/Compose/) are picked up by the same globs.
+      - path: .
+        includes:
+          - "*.swift"
+          - "**/*.swift"
+        excludes:
+          - "Reference/**"
+          - "build/**"
+          - "DerivedData/**"
+          - "*.xcodeproj/**"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.owaistaha.softnotes
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait
+        INFOPLIST_KEY_UIUserInterfaceStyle: Light
+        ENABLE_PREVIEWS: YES

@@ -163,9 +163,11 @@ Models/
                                 folderPreview (first 3), saved, add, toggleSaved, delete
 Features/
   Home/HomeView.swift           Header + FolderCard + RecentNotesSection; ScreenHeader (shared);
-                                FolderFrameKey preference (folder's global frame)
+                                FolderFrameKey preference (folder's global frame); showsChrome /
+                                heldNoteID / landingNoteID for the save sequence
   Home/FolderCard.swift         3D folder: back panel, chips, front panel (FolderShape),
-                                count bubble, FolderToggle; drag-tilt; receive bounce
+                                count bubble, FolderToggle; drag-tilt; receive bounce; STATIC
+                                geometry (chipCenter, frontPanelFrame) for the save flight
   Home/RecentNotesSection.swift Recent header + NoteRow (context menu: Save / Delete)
   TabBar/FloatingTabBar.swift   AppTab, FlowID, FloatingTabBar (sliding pill), PrimaryActionButton
   Saved/SavedView.swift         Saved list + empty state
@@ -180,12 +182,12 @@ Features/
                                 NoteCardContent (flat card, ONE view — Step 5 renders it twice
                                 and masks halves), NoteCardStaticText, NoteCardFormat
   Compose/KeyboardOverlapPadding.swift  iOS 26 keyboard safe-area fix (see Architecture)
-  Compose/FoldTimeline.swift    FoldPhase (idle, settle, lift, clear, fold, folded), FoldTimeline
-                                (phase start times, ms after the tap), FoldCard (snapshot at the tap)
+  Compose/FoldTimeline.swift    FoldPhase (idle … folded, push, drop, landed, close, zoomOut,
+                                rowEntry), FoldTimeline (ms after the tap), FoldCard, FoldLanding
   Compose/FoldingCardView.swift 06 Fold: NoteCardContent drawn twice, clipped to halves (CardHalf);
                                 flap turns about the centre line, shades, tucks behind past 90°
-  Compose/FoldStage.swift       05/06 overlay: Animatable (settle/lift/fold progress) — card flight
-                                from the write step, the ONE travelling icon, the fold
+  Compose/FoldStage.swift       05/06/07 flight: Animatable (settle/lift/fold/push/drop) — card
+                                flight, the ONE travelling icon, fold, drop behind the panel
 SoftNotesTests/                 Unit tests: FoldingCardTests (ImageRenderer pixel diffs)
 SoftNotesUITests/               UI tests (see "Test & screenshot loop")
 README.md                       Human-facing setup + design spec summary
@@ -196,14 +198,18 @@ README.md                       Human-facing setup + design spec summary
 ```
 RootContainerView (ZStack)
 ├─ Theme.Palette.canvas (ignoresSafeArea)
-├─ tabContent: HomeView | SavedView      ← recedes (scale .94, blur 14, opacity 0) while composing
+├─ tabContent: HomeView | SavedView      ← recedes (scale .94, blur 14, opacity 0) while composing;
+│    │                                     on save: zoomed ×1.3 on the folder, rises from below
 │    └─ .safeAreaInset(.bottom): FloatingTabBar  (ZStack(.top): track padded down + FAB)
 ├─ ComposeFlowView (if isComposing)       ← in-place overlay, NOT a sheet / fullScreenCover
 └─ FoldStage (always mounted, zIndex 2)   ← save → fold overlay, full-screen global space
 ```
 
 State owned by the container: `store`, `selectedTab`, `isComposing`,
-`isFolderOpen`, `folderFrame`, `foldPhase`, `foldCard`, and `@Namespace flowNamespace`.
+`isFolderOpen`, `folderFrame` / `homeFrame` / `screenSize` (frozen while
+composing or saving — Home is transformed then), the save state
+(`foldPhase`, `foldCard`, `landing`, `pendingNote`, `landingNoteID`,
+`heldNoteID`, `saveTask`), and `@Namespace flowNamespace`.
 
 Key invariants:
 - **`FlowID.primaryAction`** is the matched-geometry id shared by the Home FAB
@@ -264,11 +270,15 @@ Key invariants:
   back/away, Next drop, no hit testing; WriteStep: unfocus, hide its card,
   title away; FoldStage: everything else). Don't add timers or delays in views.
 - **`FoldStage` is Animatable and always mounted.** It converts the phase into
-  three progress values (settle, lift, fold) and SwiftUI interpolates *them*;
-  every frame's card position/pose, icon position/size and flap angle is
-  computed from those in one place. A newly inserted view can't animate from
-  an old value, which is why the stage stays mounted and only its card child
-  is inserted (`.asymmetric(insertion: .identity, removal: .opacity)`).
+  five progress values (settle, lift, fold, push, drop) and SwiftUI
+  interpolates *them*; every frame's card position/pose, icon position/size/
+  shape and flap angle is computed from those in one place. A newly inserted
+  view can't animate from an old value, which is why the stage stays mounted
+  and only its content is inserted/removed (`.identity` both ways).
+- **No `Canvas` in the flight.** The drop mask (front-panel cutout) is a
+  `Shape` with an even-odd fill. A full-screen `Canvas` mask is rasterised on
+  the CPU every frame and delayed the save's first frames by ≈0.5 s (every
+  phase then looked early on video).
 - **Hand-off without a double:** at the tap the stage's card appears exactly
   on the write card (same unposed global frame from `draft.cardFrame`, same
   pose), and the write card hides *in the same frame* with a
@@ -284,10 +294,35 @@ Key invariants:
   `FoldingCardTests` checks it: at 0° the split equals the plain card
   (max channel diff ≤ 2 on whole points), and the hand-off frame equals the
   resting write card except inside the icon.
-- The container's `file(_:)` already runs the Home half of the save
-  choreography: close compose + open folder → 420 ms → `store.add` (chip
-  drops, count rolls, folder bounces, row blur-slides in) → 380 ms → close
-  folder. The fold flight gets layered *in front of* this, not instead of it.
+- **The save's Home half is part of the same timeline** (the old `file(_:)`
+  bridge is gone). At `.folded`, out of sight and with no animation, compose
+  closes (the FAB re-inserts inside the *hidden* tab bar — no morph, no dip),
+  Home is set up zoomed ×1.3 on the folder, 500pt below, folder open, header/
+  Recent/tab bar hidden. The store does not change until `.landed`.
+- **Home's zoom is a transform, not a layout:** `scaleEffect(anchor:
+  .topLeading)` + `offset`, computed from the *frozen* untransformed frames
+  (`homeFrame`, `folderFrame`) so the centre chip slot lands at 0.549 of the
+  screen height. The landing point is computed from `FolderCard`'s static
+  geometry (`chipCenter(_:in:isOpen:floatStart:)`, `frontPanelFrame(in:)`)
+  through the same mapping — never guessed. Measure `screenSize` as
+  `frame.maxY + safeAreaInsets.bottom`: on iOS 26 the proxy of an
+  `ignoresSafeArea` view reports the *inset* size (the zoom landed 50pt high).
+- **Landing = one object:** the landing waits for the drop animation's
+  completion (`withAnimation(…, completionCriteria: .logicallyComplete)`),
+  then in ONE transaction removes the flying icon and adds the note; the new
+  chip is inserted with `.identity` (`landingNoteID`) exactly where the icon
+  ends (48 × zoom, chip shape — the icon morphs squircle → circle via
+  `StackedIconView.cornerFraction`, float start included). Chips are drawn
+  newest on top (`zIndex`): drawn underneath, the old centre chip hid the
+  hand-off for 3 frames. Verified on video: the icon's centroid closes on the
+  slot and the swap frame changes no more than its neighbours.
+- **Recent holds the new row** (`heldNoteID`) until `.rowEntry` — the
+  reference shows the two old rows through the zoom-out and slides the new
+  one in ≈1.8 s after the landing.
+- **Backgrounding mid-save fast-forwards** (`finishSaveNow()` on
+  `scenePhase == .background`): the task is cancelled, the note is added once
+  if it hadn't landed, and everything is put in its end state without
+  animation. Nothing can dismiss compose during a save (no hit testing).
 
 ---
 
@@ -431,27 +466,45 @@ also zooms during 7.38–7.8 s and from 8.83 s — not part of the app.
 | clear | 934 → ≈1017 (ink) · Next 900 → 1050 | Nav + title blur and fade upward. Next drops off the bottom edge, blurring, still dark. |
 | (hold) | 1050 → 1433 | Card + icon alone on the canvas. |
 | fold | 1433 → ≈1567 edge-on → ≈1700 flat | Top half turns about the **centre line**, free edge **toward** the viewer (it widens with perspective), shading ≈linearly to ≈20% black at edge-on (paper 253 → ≈204). Past 90° it is **behind** the bottom half — only its flared edges peek out at the sides for ≈130 ms; the folded result shows the bottom half's own rules and `#daily`. The card doesn't shrink; the shadow stays with the bottom half. The icon rides the flap's top edge down to the fold line. Result: half height (≈130pt), square top corners, icon on top. |
-| folded | ≈1700 → | Step 5B: camera push starts ≈1720 (Home rises at 1.5×, card descends). |
+| folded | ≈1700 → 1967 | Card + icon hold, centred. |
 
 Ours (`FoldTimeline`, scheduled ms after the tap): settle 0, arc 150, lift
-500, clear 970, fold 1470 (0.3 s), folded 1770, hand-off to `file(_:)` 1990
-(5A only). The phases after settle are scheduled ≈40 ms later than the
-reference's visible times because our first visible frame lands ≈40 ms after
-the tap. Animations: `Theme.Motion.settle / lift / clear / drop / fold`.
+600, clear 970, fold 1470 (0.36 s), folded 1830 — see the 06/07 table for
+the rest. Phases are scheduled a little later than the reference's visible
+times because our first frame lands ≈40 ms after the tap and springs move
+visibly in their first frame. Animations: `Theme.Motion.settle / lift /
+clear / drop / fold / push / dropIn / zoomOut / chromeIn`.
 The settled save card is ≈2.5% larger than the resting write card in the
 reference → `NoteCardPose.review` = ×1.025, 0°.
 
-### 06 Fold, second half (≈ 9.1–10.6 s) — NOT BUILT YET (Step 5B)
-- "Camera push": Home is revealed behind at ~1.5× zoom anchored on the
-  folder, so the folder rises into view large from the bottom. Existing
-  chips visible. Toggle is OFF (folder open), count shows the old number.
-- The folded card descends and slides **behind the front panel** (blurs as
-  it goes in); the icon continues into the centre chip slot.
+### The "camera" — measured (Step 5B)
+Two different zooms happen in the reference; only one is the app:
+- **Presentation zoom (NOT in the app — don't build):** the whole phone,
+  bezel included, grows ×1.14 (inner screen 499 → 569 px) over 8.83–9.6 s and
+  shrinks back over 11.33–11.9 s; the folded card grows by the same factor
+  (292 → 336 px). That's the video editor's camera.
+- **In-app zoom (built):** relative to the *screen*, the folder is larger
+  during the push than on Home — front panel 0.565 → 0.732 of the screen width
+  = **×1.30** (not the ×1.5 this file used to say); centre chip at 0.549 of
+  the screen height (Home: 0.252); header, Recent and tab bar hidden. Home
+  enters from below the screen, and zooms back to ×1 while they fade in.
 
-### 07 File it away (≈ 0:10.6–0:11.7) — Home half ALREADY BUILT
-- Count rolls 8 → 9, ~0.3s later the toggle flips ON (lavender).
-- Zoom back out from ~1.5× to 1× to the normal Home; header fades in; the
-  new row focus-pulls into the top of Recent.
+### 06 Fold, second half + 07 File it away (≈ 9.1–12.8 s) — BUILT (Step 5B)
+Same method as 5A (60 fps, positions normalised to the screen rectangle so
+the presentation zoom drops out). ms after the tap:
+
+| Phase (`FoldPhase`) | Reference (visible) | Ours (visible, final video) | What happens |
+|---|---|---|---|
+| folded | 1700 → 1967 | 1566 → 1966 | Folded card + icon hold. (Ours: compose closes and Home is set up out of sight at 1830.) |
+| push | card 1967 → ≈2670 (−156pt @852, two steps); Home first pixels 2017, settled ≈2470 | card 1966 → ≈2530 (−160pt); Home first pixels 2000 | Home rises from below, zoomed ×1.3, folder OPEN (toggle off), OLD count 8, old chips. The card + icon rise above it. |
+| drop | 2950 → ≈3220 | 3000 → 3233 | Card slides **behind the front panel** (masked by its outline, tab included), shrinking to ≈0.86 and blurring (≈8pt); the icon flies into the centre chip slot shrinking 80 → 62pt (48 × 1.3). |
+| landed | icon settles ≈3170–3220; count roll ≈3040–3140 | swap at ≈3250; count roll starts there | Icon becomes the chip (no gap, no double); count rolls 8 → 9; folder dips ≈4pt and recovers (receive bounce); old chips shuffle (ours: old centre → left, left → right, right leaves — the reference's centre slot is empty during the push, so it has nothing to shuffle). |
+| close | toggle reads lavender ≈3500 → 3620 | ≈3616 | Toggle flips on, folder closes (chips settle down 14pt). |
+| zoomOut | 3950 → ≈4520; Recent visible ≈4167; + ≈4217; header ≈4200–4300 | Recent ≈4083–4216; + 4216; header ≈4250–4316 | Home ×1.3 → ×1; header, Recent (two OLD rows) and tab bar fade/focus in. The + fades in with the bar — no morph, no dip (darkness monotonic 81 → 16 in ≈120 ms). |
+| rowEntry | 4970 → ≈5370 | ≈5050 → 5370 | The new row blur-slides into the top of Recent; old rows move down. |
+
+`FoldTimeline`: push 2000, drop 3040 (0.24 s; the landing fires on its
+completion), close = landing + 130, zoomOut 3990, rowEntry 4920, done 5450.
 
 To see any moment exactly: `ffmpeg -ss <seconds> -i Reference/reference-walkthrough.mov -frames:v 1 frame.png`,
 or a strip: `ffmpeg -ss 9 -t 3 -i Reference/reference-walkthrough.mov -vf "fps=6,scale=200:-1,tile=9x2" strip.png`.
@@ -485,26 +538,10 @@ avoidance: let SwiftUI's safe area do it where possible.
 FoldingCardView, FoldStage, `-demoFold`, Reduce Motion cross-fade. The
 fold plays on top of compose, then (5A only) `file(_:)` runs.
 
-**Step 5B — rest of 06 Fold + 07 hand-off.** Camera push, drop behind the
-front panel, icon into the centre chip; replace the 5A hand-off. Original
-suggested shape (the first bullets are now built):
-- A `FoldPhase` enum (`idle, lift, fold, push, drop, landed`) driven from the
-  container with `withAnimation(_:completionCriteria:_:completion:)` (iOS 17)
-  or a `Task` with `Task.sleep` between phases — one timeline, one place.
-- A `FoldingCardView` rendering the card as two halves (same content,
-  masked to top/bottom halves); the top half gets
-  `rotation3DEffect(-180°·t, axis: x, anchor: .bottom, perspective: ~0.5)`
-  with a darkening overlay, swapping to a plain paper "back" past 90°.
-- The flight lives in a top-level overlay in `RootContainerView` above
-  both Home and compose, positioned in global space so it can travel into
-  `folderFrame`.
-- During the push, Home must be **visible** (not opacity 0) and scaled
-  ~1.5× with its anchor at the folder's centre (compute a `UnitPoint` from
-  `folderFrame` vs screen bounds), then scale back to 1×.
-- "Behind the front panel": simplest is a mask/clip at the folder's body-top
-  line during the drop, plus a blur ramp.
-- Finish by calling the existing `file(_:)` logic (adjust its delays so the
-  chip landing lines up with the icon arriving — don't duplicate it).
+**Step 5B — rest of 06 Fold + 07 File it away.** DONE: measured the
+camera (presentation ×1.14 vs in-app ×1.30), Home push/zoom, drop behind the
+front panel, one-object icon → chip landing, count/toggle/zoom-out/row
+entry, background fast-forward; the 5A `file()` bridge is gone.
 
 **Step 6 — Polish pass.** Frame-by-frame comparison against the reference
 for every section; tune `Theme.Motion` and geometry only through tokens.
@@ -585,6 +622,17 @@ fps=60 resample repeats the last frame across the gap — fine for timing,
 but a phase that starts right after a hold shows its first frame late by
 at most one frame.
 
+**Re-runs:** `scripts/ui-shots.sh` re-runs every failed test ONCE and prints
+`RETRY: … passed on the second run (flaky)` or `… failed again`; the run
+fails only if a retry fails. **Known simulator stall:** polling the
+accessibility tree (any XCUITest query) while the software keyboard animates
+can freeze the app until XCTest gives up ("Timed out while evaluating UI
+query") — hit in Step 4 and, with `VIDEO=1`, in about half the 5B runs; the
+app itself never stalls outside XCTest (checked by sampling a manual run).
+Tests using `-demoFold` wait ≈4 s (`waitOutDemoKeyboard()`) before their
+first query. Save tests key off `saveInFlight` — an accessibility element
+that exists only while a save is in flight ("Saving note" for VoiceOver).
+
 Unit tests (`SoftNotesTests`, hosted in the app) render views off-screen with
 `ImageRenderer` and diff pixels: `scripts/ui-shots.sh SoftNotesTests/FoldingCardTests`
 (any argument with a `/` is passed to `-only-testing` as is). Renders and an
@@ -595,8 +643,12 @@ Launch arguments (DEBUG only):
   saves a demo note (with the icon picked in step 1) instead of staying
   disabled. Normal path: Next is disabled while empty.
 - `-demoFold` — opens compose on the write step with "Have a good day"
-  typed, waits for the keyboard, then runs the save → fold timeline exactly
-  as Next would (≈3.2 s after launch). `VIDEO=1 scripts/ui-shots.sh testDemoFold`.
+  typed, waits for the keyboard, then runs the whole save exactly as Next
+  would (tap ≈3.2 s after launch, settled Home ≈5.5 s later).
+  `VIDEO=1 scripts/ui-shots.sh testDemoFold`. Tests: `testDemoFold` (count,
+  closed folder, toggle on, row on top, no leftover flight),
+  `testSaveTwiceInARow` (+ `-demoSave`, circle icon), `testBackgroundMidFlight`,
+  `testReduceMotionSave`.
 - `-reduceMotion` — forces the Reduce Motion paths (sets SwiftUI's
   `_accessibilityReduceMotion`; UI tests can't flip the system setting).
   `testReduceMotionSave` uses it with `-demoFold`.
@@ -684,11 +736,12 @@ with simple fades.
 - [x] Step 3 — 03 Pick an icon
 - [x] Step 4 — 04 Write a chit
 - [x] Step 5A — 05 Save + first half of 06 Fold (timeline, split card, icon lift, -demoFold, Reduce Motion)
-- [ ] Step 5B — rest of 06 Fold (camera push, drop into the folder) + 07 hand-off
+- [x] Step 5B — rest of 06 Fold (push, drop into the folder) + 07 file away + hand-off
 - [ ] Step 6 — Polish, Reduce Motion, VoiceOver
 
 Log:
 - (add one line per session: date, what changed, what's still off vs the reference)
+- 2026-09-30 — Step 5B: camera measured — the reference has a presentation zoom (bezel ×1.14, not built) AND an in-app zoom of Home on the folder (×1.30, not ×1.5). Built push (Home rises from below, zoomed, folder open, old count/chips), drop behind the front panel (FolderShape cutout, shrink 0.86, blur 8), icon → chip hand-off as one object (landing on the drop's completion, `.identity` chip, shape morph, newest chip on top), count roll + bounce, toggle, zoom-out with header/Recent/tab bar, held row entry, background fast-forward; the 5A `file()` bridge is gone. Final video vs reference (ms after tap): Home first visible 2000 vs 2017; card rise 1966 vs 1967; drop 3000 vs 2950; icon lands ≈3250 vs ≈3190; toggle ≈3616 vs ≈3500; Recent/+ back ≈4083–4216 vs ≈4167–4217; new row ≈5050 vs 4970. Found + fixed on video: Canvas mask stalled the first frames ≈0.5 s; screen size came back inset (zoom 50pt high); new chip hidden under the old centre chip for 3 frames; Home's chips visible at push start (rise 308 → 500). Full suite 16/16 first attempt, but the simulator host stalled for minutes in several tests (even a unit test took 459 s). Still off: reference centre slot is empty during the push (ours shows the old centre chip, which shuffles out by spec); count roll ≈100 ms after the reference's (ours waits for the icon); toggle ≈100 ms late; the reference card rises in two steps, ours in one; the + fades in place (ref rides the zoom-out up); flap "ears" still shorter.
 - 2026-09-30 — Step 5A: studied 7.2–11.2 s at 30/60 fps + a per-frame metric pass (the save starts at 7.383 s, not 8.4). FoldPhase/FoldTimeline (one timeline in `RootContainerView.save`), FoldingCardView (two clipped halves, flap toward the viewer, 20% shade, tucks behind past 90°), FoldStage (Animatable overlay: card flight, ONE travelling icon, fold), `.review` ×1.025, `-demoFold`, `-reduceMotion`, Reduce Motion cross-fade, SoftNotesTests pixel diffs (split at rest: max diff 1; hand-off: max 3 outside the icon). Video vs reference (ms after the tap, visible): keyboard gone 233 vs ≈250; lift 433→≈610 vs 467→650; nav/title fade 950→1017 vs 934→1017; Next gone 1017–1067 vs 1050; fold start 1433 vs 1433, edge-on 8 frames in both (per-frame angles within ~3°); flap edges visible ≈100 ms vs ≈130–180. Found + fixed on video: a ghost write card fading behind the flight (opacity animated by the tap's spring). Still off: ref flap edges linger longer and it keeps faint "ears" at the fold-line corners into 06; ref lifted icon sits ≈6pt left of centre (ours centred); ref presentation camera zooms (not app); our settle occasionally drops frames in the simulator recorder; one full-suite run had the pre-existing "Timed out while evaluating UI query" flake in `leaveTextFieldIfFocused` (passes alone).
 - 2026-09-30 — Close-morph probe: + already had `morphTransition`; close is a sequential fade (Next fades in place, then + fades in) — unresolved, documented. PastelTone bases calibrated to the reference picker (rendered within ~4/255; lavender more violet, green more yellow-green). Step 4: NoteCardView/NoteCardContent (posed, single-view content), WriteStep (auto-focus 0.85 s, top→bottom layout flip, status bar + nav hide), KeyboardOverlapPadding (iOS 26 44pt keyboard overlap), 48-char cap, tag chip cycling, real Note → `file(_:)`; paper token corrected to `#FFFDFA`; 10 UI tests pass (one earlier run had two unreproduced "Timed out while evaluating UI query" failures). Still off vs reference: keyboard height differs (ref 412pt, ours 334pt → our title stays on screen while typing); ref Next looks enabled on the empty card (ours disabled by spec); keyboard starts ≈0.5 s later after focus in the simulator; ref header icon/heading a touch larger; card sits ≈4–10pt lower (safe-area difference); icon glyph differs (sun vs sneaker).
 - 2026-09-30 — Steps 2+3: files moved into App/DesignSystem/Models/Features; UI-test target + `scripts/ui-shots.sh` (+ VIDEO=1 recording and disc/ring trackers); ComposeDraft/ComposeStep, ComposeFlowView shell (always in tree, `isPresented`), IconPickerStep, WriteStep placeholder, `-demoSave` (DEBUG). **FAB → Next morph measured: it glides, it doesn't pop** — but the original build dissolved (disc ~40–50% see-through mid-flight, because Next sat inside the blur-fading overlay); now open = solid glide (y 764→799, ~0.4 s, opacity constant). Close still dips (~45% opaque, ~100 ms; cause unknown). Reference says "Step n of **2**" with the arc in thirds — we follow the video, not the old "of 3". Picker matches the reference layout to within ~1–2pt at the same scale. Still off vs reference: back-tile tones are less saturated than the reference (its blue/pink/orange backs are deeper); glyphs are SF outline symbols, not the reference's ghost/cherries/rocket/target/sneaker/basketball/flag/music/cloud/cup/leaf/star; icon glass a touch more milky; Next disc 62pt vs ≈64pt; Next halo shadow lighter; reference title first-line sits ~3pt higher (safe-area difference).

@@ -109,10 +109,12 @@ is not done.
    Also add a `.gitignore` covering `*.xcodeproj/xcuserdata`, `DerivedData/`,
    `.DS_Store`, `build/`. Commit `project.yml`; the generated `.xcodeproj`
    can be committed or ignored — ask the human which they prefer if unsure.
-   **Done (Step 1):** the sources turned out to be flat at the repo root, so
-   the real `project.yml` uses a single `path: .` source with `*.swift` /
-   `**/*.swift` includes (new subfolders are picked up automatically). The
-   `.xcodeproj` is git-ignored (regenerate it), as is `Reference/*.mov`.
+   **Done:** sources started flat at the repo root and were moved (`git mv`)
+   into the folders below before Step 2, so `project.yml` lists them
+   explicitly (`App`, `DesignSystem`, `Models`, `Features`; new files inside
+   those are picked up automatically). Don't use `path: .` — it would pull
+   the UI-test sources into the app target. The `.xcodeproj` is git-ignored
+   (regenerate it), as is `Reference/*.mov`.
    **Never put DerivedData inside the repo** (e.g. `-derivedDataPath build/…`):
    XcodeGen scans the source path, finds the built app's `Info.plist`, sets
    it as `INFOPLIST_FILE`, and the build fails with "Cycle inside SoftNotes".
@@ -136,44 +138,38 @@ is not done.
 
 ## What already exists — don't redo this
 
-All sources sit **flat at the repo root** (no `App/`, `DesignSystem/`,
-`Models/`, `Features/` folders). The grouping below is logical only.
-`project.yml` compiles every `.swift` file under the root, so new files can
-go at the root or in a new subfolder — both are picked up.
-
 ```
-project.yml                   XcodeGen spec (path: . + *.swift includes)
-.gitignore                    ignores *.xcodeproj/, build/, DerivedData/, Reference/*.mov
-Reference/                    reference-walkthrough.mov (local only, git-ignored)
-
-# App
-SoftNotesApp.swift            @main; RootContainerView; .preferredColorScheme(.light)
-RootContainerView.swift       App shell (see "Architecture")
-# Design system
-Theme.swift                   ALL tokens: Palette, Radius, Metrics, Motion springs,
-                              PastelTone (7 tones: base + light), Font.soft*, Color(hex:),
-                              Comparable.clamped(to:)
-SoftSurface.swift             Elevation (.raised/.floating/.folder multi-layer shadows),
-                              SoftSurface<Shape> view, PressableButtonStyle (.pressable),
-                              BlurSlideTransition (.blurSlide / .blurFade), IdleFloat (.idleFloat())
-StackedIconView.swift         The two-tile glass icon (back solid tile + frosted front tile +
-                              thin outline glyph)
-# Models
-Note.swift                    IconShape, NoteIcon (+ .library: the 12 picker icons, outline
-                              symbols), Note (+ .samples: 8 notes, .demo()), Date.softRelative(to:)
-NotesStore.swift              @Observable: notes (newest first), count, recent (≤48h, max 3),
-                              folderPreview (first 3), saved, add, toggleSaved, delete
-# Features
-HomeView.swift                Header + FolderCard + RecentNotesSection; ScreenHeader (shared);
-                              FolderFrameKey preference (folder's global frame)
-FolderCard.swift              3D folder: back panel, chips, front panel (FolderShape),
-                              count bubble, FolderToggle; drag-tilt; receive bounce
-RecentNotesSection.swift      Recent header + NoteRow (context menu: Save / Delete)
-FloatingTabBar.swift          AppTab, FlowID, FloatingTabBar (sliding pill), PrimaryActionButton
-SavedView.swift               Saved list + empty state
-ComposeFlowView.swift         STUB — nav bar + morphing Next button only. Its Next
-                              button files Note.demo() so Home-side animations can be tested.
-README.md                     Human-facing setup + design spec summary
+project.yml                     XcodeGen spec (App, DesignSystem, Models, Features, UI tests)
+.gitignore                      ignores *.xcodeproj/, build/, DerivedData/, Reference/*.mov
+Reference/                      reference-walkthrough.mov (local only, git-ignored)
+App/
+  SoftNotesApp.swift            @main; RootContainerView; .preferredColorScheme(.light)
+  RootContainerView.swift       App shell (see "Architecture")
+DesignSystem/
+  Theme.swift                   ALL tokens: Palette, Radius, Metrics, Motion springs,
+                                PastelTone (7 tones: base + light), Font.soft*, Color(hex:),
+                                Comparable.clamped(to:)
+  SoftSurface.swift             Elevation (.raised/.floating/.folder multi-layer shadows),
+                                SoftSurface<Shape> view, PressableButtonStyle (.pressable),
+                                BlurSlideTransition (.blurSlide / .blurFade), IdleFloat (.idleFloat())
+  StackedIconView.swift         The two-tile glass icon (back solid tile + frosted front tile +
+                                thin outline glyph)
+Models/
+  Note.swift                    IconShape, NoteIcon (+ .library: the 12 picker icons, outline
+                                symbols), Note (+ .samples: 8 notes, .demo()), Date.softRelative(to:)
+  NotesStore.swift              @Observable: notes (newest first), count, recent (≤48h, max 3),
+                                folderPreview (first 3), saved, add, toggleSaved, delete
+Features/
+  Home/HomeView.swift           Header + FolderCard + RecentNotesSection; ScreenHeader (shared);
+                                FolderFrameKey preference (folder's global frame)
+  Home/FolderCard.swift         3D folder: back panel, chips, front panel (FolderShape),
+                                count bubble, FolderToggle; drag-tilt; receive bounce
+  Home/RecentNotesSection.swift Recent header + NoteRow (context menu: Save / Delete)
+  TabBar/FloatingTabBar.swift   AppTab, FlowID, FloatingTabBar (sliding pill), PrimaryActionButton
+  Saved/SavedView.swift         Saved list + empty state
+  Compose/ComposeFlowView.swift Nav bar + morphing Next button (+ steps, from Step 2/3 on)
+SoftNotesUITests/               UI tests (see "Test & screenshot loop")
+README.md                       Human-facing setup + design spec summary
 ```
 
 ### Architecture (must stay true)

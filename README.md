@@ -11,22 +11,22 @@ Home dashboard, floating tab bar and app shell recreated from the reference reco
 
 ## Structure
 
-All sources are flat at the repo root; `project.yml` compiles every `.swift` file under it.
-
 ```
-SoftNotesApp.swift         @main, forces light mode
-RootContainerView.swift    shell: canvas, tabs, tab bar, compose overlay, save choreography
-Theme.swift                palette, pastel tones, metrics, springs, type
-SoftSurface.swift          layered shadows, SoftSurface, pressable style, blur transitions, idle float
-StackedIconView.swift      the two-tile glass icon
-Note.swift                 Note, NoteIcon, icon library (12), samples, relative time
-NotesStore.swift           @Observable store
-HomeView.swift             header + folder + recent; publishes FolderFrameKey
-FolderCard.swift           3D folder, chips, count bubble, Notes toggle, FolderShape
-RecentNotesSection.swift
-FloatingTabBar.swift       tab bar + PrimaryActionButton (FAB / Next)
-SavedView.swift
-ComposeFlowView.swift      STUB — replaced in the next step
+App/
+  SoftNotesApp.swift         @main, forces light mode
+  RootContainerView.swift    shell: canvas, tabs, tab bar, compose overlay, save choreography
+DesignSystem/
+  Theme.swift                palette, pastel tones, metrics, springs, type
+  SoftSurface.swift          layered shadows, SoftSurface, pressable style, blur transitions, idle float
+  StackedIconView.swift      the two-tile glass icon
+Models/
+  Note.swift                 Note, NoteIcon, icon library (12), samples, relative time
+  NotesStore.swift           @Observable store
+Features/
+  Home/                      HomeView (publishes FolderFrameKey), FolderCard, RecentNotesSection
+  TabBar/FloatingTabBar.swift  tab bar + PrimaryActionButton (FAB / Next)
+  Saved/SavedView.swift
+  Compose/ComposeFlowView.swift  compose flow shell
 ```
 
 ## Design spec (measured from the recording)

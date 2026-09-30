@@ -14,19 +14,10 @@ targets:
     type: application
     platform: iOS
     sources:
-      # Sources currently live flat at the repo root (not in App/, DesignSystem/,
-      # etc.). Only .swift files are included so docs, the reference video and
-      # build output stay out of the target. Subfolders added later
-      # (e.g. Features/Compose/) are picked up by the same globs.
-      - path: .
-        includes:
-          - "*.swift"
-          - "**/*.swift"
-        excludes:
-          - "Reference/**"
-          - "build/**"
-          - "DerivedData/**"
-          - "*.xcodeproj/**"
+      - path: App
+      - path: DesignSystem
+      - path: Models
+      - path: Features
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.owaistaha.softnotes

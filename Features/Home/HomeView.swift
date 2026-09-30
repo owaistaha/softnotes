@@ -21,6 +21,8 @@ struct HomeView: View {
     var heldNoteID: Note.ID? = nil
     /// The note whose chip the save flight hands over (appears in place).
     var landingNoteID: Note.ID? = nil
+    /// The save flight is about to land: the centre chip slot is emptied.
+    var vacatesCentreChip: Bool = false
     var onSearch: () -> Void = {}
     var onSeeAll: () -> Void = {}
     var onOpenFolder: () -> Void = {}
@@ -39,6 +41,7 @@ struct HomeView: View {
                     previews: store.folderPreview,
                     isOpen: $isFolderOpen,
                     landingNoteID: landingNoteID,
+                    vacatesCentre: vacatesCentreChip,
                     onTap: onOpenFolder
                 )
                 // Report the folder's on-screen frame so the compose flow can

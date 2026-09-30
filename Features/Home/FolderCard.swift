@@ -24,6 +24,12 @@ struct FolderCard: View {
     /// appears in place with no drop-in transition (the flying icon *is* it
     /// until that frame).
     var landingNoteID: Note.ID? = nil
+    /// The save flight is coming: the chips move one slot along (centre →
+    /// left, left → right, right leaves) so the centre slot is EMPTY when the
+    /// icon arrives (reference: only two chips during the push). When the
+    /// note is added this turns off in the same transaction — every old chip
+    /// is then already in its new slot, so nothing crosses the landing chip.
+    var vacatesCentre: Bool = false
     var onTap: () -> Void = {}
 
     @State private var tilt: CGSize = .zero
@@ -115,7 +121,7 @@ struct FolderCard: View {
 
     private var chips: some View {
         ZStack(alignment: .topLeading) {
-            ForEach(Array(previews.enumerated()), id: \.element.id) { index, note in
+            ForEach(chipSlots, id: \.note.id) { note, index in
                 let slot = Self.chipSlot(index)
                 StackedIconView(icon: note.icon, size: Self.chipSize)
                     .rotationEffect(.degrees(slot.rotation))
@@ -130,12 +136,21 @@ struct FolderCard: View {
                     // Newest on top: the chip that just landed must never pass
                     // behind the old centre chip shuffling out (video: it hid
                     // the hand-off for 3 frames).
-                    .zIndex(Double(previews.count - index))
+                    .zIndex(Double(Self.slotCount - index))
             }
         }
         .frame(width: width, height: height)
         .animation(Theme.Motion.bouncy, value: previews.map(\.id))
+        .animation(Theme.Motion.bouncy, value: vacatesCentre)
         .animation(Theme.Motion.bouncy, value: isOpen)
+    }
+
+    static let slotCount = 3
+
+    /// Which note sits in which slot (0 centre, 1 left, 2 right).
+    private var chipSlots: [(note: Note, index: Int)] {
+        let shift = vacatesCentre ? 1 : 0
+        return previews.prefix(Self.slotCount - shift).enumerated().map { ($1, $0 + shift) }
     }
 
     private static var chipTransition: AnyTransition {

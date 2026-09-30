@@ -156,6 +156,9 @@ struct RootContainerView: View {
                     showsChrome: !chromeHidden,
                     heldNoteID: heldNoteID,
                     landingNoteID: landingNoteID,
+                    // Set up with the rest of Home at `.folded`, out of sight: shuffled
+                    // during the push, the leaving right chip showed as Home rose.
+                    vacatesCentreChip: foldPhase >= .folded && foldPhase < .landed,
                     onSeeAll: { withAnimation(Theme.Motion.snappy) { selectedTab = .saved } }
                 )
                 .transition(.blurFade)

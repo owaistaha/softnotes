@@ -71,6 +71,7 @@ struct WriteStep: View {
             if !Task.isCancelled { isFocused = true }
         }
         .onDisappear { draft.isEditingText = false }
+        .modifier(DebugFocusHook(isFocused: $isFocused))
         // Next was tapped: the keyboard drops as the card flies to the centre.
         .onChange(of: foldPhase) { _, phase in
             if phase != .idle { isFocused = false }
@@ -133,6 +134,27 @@ struct WriteStep: View {
         .contentShape(Rectangle())
         .onTapGesture { isFocused = true }
     }
+}
+
+/// DEBUG: the `-keyboardCycles` harness focuses/unfocuses the card through
+/// `Notification.Name.debugWriteFocus` (object: Bool) — no XCUITest queries
+/// involved. Does nothing in release builds.
+private struct DebugFocusHook: ViewModifier {
+    var isFocused: FocusState<Bool>.Binding
+
+    func body(content: Content) -> some View {
+        #if DEBUG
+        content.onReceive(NotificationCenter.default.publisher(for: .debugWriteFocus)) { note in
+            isFocused.wrappedValue = (note.object as? Bool) ?? false
+        }
+        #else
+        content
+        #endif
+    }
+}
+
+extension Notification.Name {
+    static let debugWriteFocus = Notification.Name("softnotes.debugWriteFocus")
 }
 
 #Preview {

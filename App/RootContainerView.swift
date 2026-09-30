@@ -46,6 +46,8 @@ struct RootContainerView: View {
     /// the landing (reference: the count rolls just before the icon settles).
     @State private var countLead = 0
     @State private var saveTask: Task<Void, Never>?
+    /// DEBUG `-keyboardCycles`: the watchdog's summary once the cycles finish.
+    @State private var keyboardCycleReport: String?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
@@ -74,12 +76,12 @@ struct RootContainerView: View {
                     return CGSize(width: frame.maxX + proxy.safeAreaInsets.trailing,
                                   height: frame.maxY + proxy.safeAreaInsets.bottom)
                 } action: { size in
-                    if canMeasureHome { screenSize = size }
+                    if canMeasureHome && size != screenSize { screenSize = size }
                 }
 
             tabContent
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
-                    if canMeasureHome { homeFrame = frame }
+                    if canMeasureHome && frame != homeFrame { homeFrame = frame }
                 }
                 // Hidden under compose until the push; shown instantly then
                 // (it enters from below the screen, not by fading).
@@ -119,6 +121,10 @@ struct RootContainerView: View {
                 onClose: cancelComposing,
                 onSave: save
             )
+            // One source of truth for the keyboard: compose is laid out as if
+            // there were none, and `keyboardOverlapPadding()` inside it pads
+            // by UIKit's keyboard frame (see KeyboardOverlapPadding).
+            .ignoresSafeArea(.keyboard)
             .zIndex(1)
 
             // Always mounted: it animates its own progress values (see FoldStage).
@@ -140,13 +146,31 @@ struct RootContainerView: View {
         // The write step hides the status bar while typing (reference).
         .statusBarHidden(isComposing && draft.isEditingText)
         .onPreferenceChange(FolderFrameKey.self) { frame in
-            if canMeasureHome { folderFrame = frame }
+            if canMeasureHome && frame != folderFrame { folderFrame = frame }
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { finishSaveNow() }
         }
         .sensoryFeedback(.success, trigger: store.count) { old, new in new > old }
         .task { await runDemoFoldIfRequested() }
+        .task { await runKeyboardCyclesIfRequested() }
+        #if DEBUG
+        .task {
+            // `-watchdog`: log main-thread stalls > 500 ms for the whole run
+            // (os_log subsystem com.owaistaha.softnotes, category watchdog).
+            if ProcessInfo.processInfo.arguments.contains("-watchdog") { MainThreadWatchdog.shared.start() }
+        }
+        #endif
+        #if DEBUG
+        .overlay(alignment: .topLeading) {
+            if let keyboardCycleReport {
+                Color.clear.frame(width: 1, height: 1)
+                    .accessibilityElement()
+                    .accessibilityLabel(keyboardCycleReport)
+                    .accessibilityIdentifier("keyboardCycleReport")
+            }
+        }
+        #endif
     }
 
     @ViewBuilder
@@ -406,6 +430,41 @@ struct RootContainerView: View {
 // MARK: - DEBUG launch arguments
 
 extension RootContainerView {
+    /// `-keyboardCycles N`: opens the write step and focuses / dismisses the
+    /// card N times (keyboard up 1.2 s, down 1.0 s) with the main-thread
+    /// watchdog running; no XCUITest queries happen meanwhile. Prints one line
+    /// per cycle and publishes the summary as the `keyboardCycleReport`
+    /// accessibility element.
+    private func runKeyboardCyclesIfRequested() async {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-keyboardCycles"), i + 1 < args.count,
+              let cycles = Int(args[i + 1]) else { return }
+        let watchdog = MainThreadWatchdog.shared
+        watchdog.start()
+        try? await Task.sleep(for: .milliseconds(600))
+        print("HARNESS t=\(MainThreadWatchdog.clock()) ms: open compose on the write step")
+        startComposing()
+        draft.step = .write
+        // Auto-focus at 0.85 s; let the first keyboard settle. Stalls in this
+        // first open (compose + first keyboard) are counted too.
+        try? await Task.sleep(for: .milliseconds(2500))
+        print("KEYBOARD FIRST OPEN: \(watchdog.report)")
+        for cycle in 1...cycles {
+            let before = watchdog.report.stalls.count
+            NotificationCenter.default.post(name: .debugWriteFocus, object: false)
+            try? await Task.sleep(for: .milliseconds(1000))
+            NotificationCenter.default.post(name: .debugWriteFocus, object: true)
+            try? await Task.sleep(for: .milliseconds(1200))
+            let r = watchdog.report
+            print("KEYBOARD CYCLE \(cycle)/\(cycles): stalls +\(r.stalls.count - before), max so far \(r.maxLatency) ms")
+        }
+        let report = "cycles=\(cycles) \(watchdog.report)"
+        print("KEYBOARD CYCLES DONE: \(report)")
+        keyboardCycleReport = report
+        #endif
+    }
+
     /// `-demoFold`: opens compose on the write step with "Have a good day"
     /// typed, waits for the keyboard (auto-focus), then runs the whole save
     /// sequence exactly as Next would — for recording without typing.

@@ -16,6 +16,9 @@ final class SoftNotesUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
+        // DEBUG main-thread watchdog: stalls > 500 ms go to os_log
+        // (com.owaistaha.softnotes / watchdog) — see CLAUDE.md.
+        app.launchArguments = ["-watchdog"]
         app.launch()
         XCTAssertTrue(app.buttons["primaryAction"].waitForExistence(timeout: 10), "Home FAB not found")
         // Let the launch settle (idle chip float, etc.) before the first tap.
@@ -273,11 +276,38 @@ final class SoftNotesUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 2.5)
     }
 
+    // MARK: - Step 6B (robustness)
+
+    /// `-keyboardCycles 20`: the app opens the write step and focuses /
+    /// dismisses the card 20 times with a main-thread watchdog running
+    /// (DEBUG). Meanwhile this test polls the accessibility tree the way the
+    /// write-step tests do (`keyboards.firstMatch`), which is what used to
+    /// hang the app. Asserts no main-thread stall > 500 ms.
+    func testKeyboardCyclesNoStalls() {
+        relaunch(["-keyboardCycles", "20"])
+        let report = app.descendants(matching: .any)["keyboardCycleReport"]
+        let deadline = Date().addingTimeInterval(120)
+        var polls = 0
+        while !report.exists && Date() < deadline {
+            _ = app.keyboards.firstMatch.exists
+            polls += 1
+            Thread.sleep(forTimeInterval: 0.25)
+        }
+        XCTAssertTrue(report.exists, "harness never finished")
+        let summary = report.label
+        let attachment = XCTAttachment(string: "\(summary) polls=\(polls)")
+        attachment.name = "keyboard_cycles_report"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        print("KEYBOARD CYCLES (under XCUITest, \(polls) polls): \(summary)")
+        XCTAssertTrue(summary.contains("stalls=0 "), "main-thread stalls: \(summary)")
+    }
+
     // MARK: - Step 5A (save + fold)
 
     private func relaunch(_ arguments: [String]) {
         app.terminate()
-        app.launchArguments = arguments
+        app.launchArguments = arguments + ["-watchdog"]
         app.launch()
     }
 

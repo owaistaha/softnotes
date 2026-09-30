@@ -110,6 +110,8 @@ enum Theme {
         /// 06 push: Home rises into view (zoomed) and the folded card rises
         /// above it (reference ≈0.5–0.7 s, decelerating, no overshoot).
         static let push = Animation.spring(duration: 0.55, bounce: 0)
+        /// 06 push, the card's second short rise (reference ≈0.18 s, −26pt).
+        static let pushStep = Animation.spring(duration: 0.3, bounce: 0)
         /// 06 drop: the card slides behind the front panel and the icon
         /// flies into the chip slot (reference ≈0.24 s, ease-in-out).
         static let dropIn = Animation.timingCurve(0.45, 0, 0.35, 1, duration: 0.24)

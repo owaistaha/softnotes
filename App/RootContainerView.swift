@@ -307,6 +307,8 @@ struct RootContainerView: View {
 
                 try await at(FoldTimeline.push)
                 withAnimation(Theme.Motion.push) { foldPhase = .push }
+                try await at(FoldTimeline.pushStep)
+                withAnimation(Theme.Motion.pushStep) { foldPhase = .pushStep }
 
                 // Card behind the front panel, icon into the chip slot. The
                 // landing waits for the drop to *finish*, so the icon is

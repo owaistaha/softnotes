@@ -19,8 +19,12 @@ enum FoldPhase: Int, Comparable {
     /// still) compose closes and Home is set up: zoomed ×1.3 on the folder,
     /// folder open, below the screen, header/Recent/tab bar hidden.
     case folded
-    /// Home rises into view (zoomed) while the folded card rises above it.
+    /// Home rises into view (zoomed) while the folded card rises above it —
+    /// the card only part of the way (`FoldStage.firstRiseFraction`).
     case push
+    /// After a short hold, the card rises the rest of the way (reference:
+    /// the card rises in two steps; the folder in one).
+    case pushStep
     /// The card drops behind the front panel (blur ramp); the icon flies into
     /// the centre chip slot.
     case drop
@@ -62,6 +66,9 @@ enum FoldTimeline {
     /// Home rises from below, zoomed ×1.3; the folded card rises ≈160pt
     /// (ref: card 1967→≈2670, folder 2017→≈2470).
     static let push = 2000
+    /// The card's second, short rise (ref: first step 1933 → ≈2350, hold,
+    /// second step 2483 → ≈2667, −26 of the −156pt).
+    static let pushStep = 2510
     /// Card drops behind the front panel, icon flies to the chip slot
     /// (ref 2950→≈3200). The landing (note added) fires when this animation
     /// completes (`Theme.Motion.dropIn`, 0.24 s) — the icon is then exactly

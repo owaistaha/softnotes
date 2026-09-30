@@ -34,7 +34,7 @@ struct FoldStage: View, Animatable {
         settle = phase >= .settle ? 1 : 0
         lift = phase >= .lift ? 1 : 0
         fold = phase >= .fold ? 1 : 0
-        push = phase >= .push ? 1 : 0
+        push = phase >= .pushStep ? 1 : (phase >= .push ? Self.firstRiseFraction : 0)
         drop = phase >= .drop ? 1 : 0
     }
 
@@ -56,6 +56,8 @@ struct FoldStage: View, Animatable {
     static let landedIconRise: CGFloat = 53
     /// The card shrinks to this as it slides behind the front panel (ref ≈0.86).
     static let dropScale: CGFloat = 0.86
+    /// Share of the push rise done in the first step (ref: 128 of 156pt).
+    static let firstRiseFraction: Double = 0.82
     /// Blur at the end of the drop (reference: the card is soft as it goes in).
     static let dropBlur: CGFloat = 8
     /// How far below the panel's body-top line the fold line ends up.
@@ -230,6 +232,7 @@ private struct PanelCutout: Shape {
             Text("Lift").tag(FoldPhase.lift)
             Text("Fold").tag(FoldPhase.fold)
             Text("Push").tag(FoldPhase.push)
+            Text("Step").tag(FoldPhase.pushStep)
             Text("Drop").tag(FoldPhase.drop)
         }
         .pickerStyle(.segmented)

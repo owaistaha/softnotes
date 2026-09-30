@@ -205,9 +205,13 @@ Key invariants:
   Both `.identity` = the view *pops* (nothing left to match); both default
   (opacity) = a glide that dips ~40% see-through mid-flight; a blur-fade on
   a parent that also contains Next dissolves it. Same rule for any future
-  matched pair. Known residual: on *close* (Next → FAB) the disc still dips
-  to ~45% opaque for ~100 ms — cause not found (not Home's opacity — probed);
-  the reference never shows a close.
+  matched pair. Known residual — **close (Next → FAB) is not a morph**:
+  60 fps frames (probe after Step 3) show Next fading out *in place* (~130 ms,
+  no movement), then the + appearing already at home, half-transparent, and
+  fading in (~80 ms). Matched geometry isn't pairing on close even though the
+  FAB already has `morphTransition` (so that isn't the cause), and it isn't
+  Home's opacity (probed). Unresolved; the reference never shows a close.
+  Probe next time with `scripts/video-frames.sh` on the close window.
 - `ComposeFlowView` stays in the hierarchy permanently (`isPresented`), and its
   Next button lives in a layer *outside* the blur-fading content (nav + step).
 - The FAB is positioned by layout, not `.offset`: `FloatingTabBar` is a
@@ -461,13 +465,16 @@ VIDEO=1 scripts/ui-shots.sh testMotionForVideo   # records build/shots/ui/motion
 scripts/video-disc-track.py  build/shots/ui/motion.mov   # FAB/Next disc: centre + opacity per frame
 scripts/video-ring-track.py  build/shots/ui/motion.mov 27 40   # picker selection ring per frame
 scripts/fab-morph-stats.py   build/shots/ui 01_ 03_      # same disc measure on screenshots
+scripts/video-frames.sh build/shots/ui/motion.mov 33.40 33.75 out.png 1 1206:560:0:2000 7
+                            # tile frames by tracker time (step, crop, columns)
 ```
 The trackers print one line per *change*; a glide is a run of intermediate
 positions over several frames, a pop is a single jump, a dissolve is `core`
 (darkness) drifting up (23 ≈ solid ink). Times in their output are frame
 indices / 60 — **don't** feed them to `ffmpeg -ss` (screen recordings are
-variable-frame-rate, seeks land seconds off); extract frames with a `fps=60`
-filter and count instead, or `select=between(n,a,b)`.
+variable-frame-rate, seeks land seconds off); use `scripts/video-frames.sh`,
+which selects frames on the same time base. Note `ui-shots.sh` wipes
+`build/shots/ui/` on every run — copy anything you want to keep to `build/shots/`.
 Add a test to `testMotionForVideo` (or a new one) for every new animation.
 
 Launch arguments (DEBUG only): `-demoSave` — on the compose flow's last

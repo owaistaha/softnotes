@@ -77,6 +77,13 @@ enum Theme {
         static let pickerRing: CGFloat     = 80
         static let pickerRingWidth: CGFloat = 2
         static let pickerPreview: CGFloat  = 120
+        /// Picker title's top gap under the nav (ref: title ink starts 72.1pt
+        /// below the "New note" ink; 28.5 gave 70.6) and the preview's gap
+        /// under the title (reduced by the same 1.5pt so preview and grid —
+        /// which already matched within 0.2pt — stay where they were).
+        static let pickerTitleTop: CGFloat   = 30
+        static let pickerPreviewTop: CGFloat = 27
+        static let pickerGridTop: CGFloat    = 27
 
         static let tabBarHeight: CGFloat  = 73
         static let tabBarInset: CGFloat   = 31

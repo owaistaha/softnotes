@@ -33,13 +33,13 @@ struct IconPickerStep: View {
             .foregroundStyle(Theme.Palette.ink)
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(.isHeader)
-            .padding(.top, 28.5)
+            .padding(.top, Theme.Metrics.pickerTitleTop)
 
             preview
-                .padding(.top, 28.5)
+                .padding(.top, Theme.Metrics.pickerPreviewTop)
 
             grid
-                .padding(.top, 27)
+                .padding(.top, Theme.Metrics.pickerGridTop)
         }
         .frame(maxWidth: .infinity)
         // Light haptic whenever the selection changes (not on first appear).

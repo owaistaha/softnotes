@@ -27,3 +27,26 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait
         INFOPLIST_KEY_UIUserInterfaceStyle: Light
         ENABLE_PREVIEWS: YES
+  SoftNotesUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: SoftNotesUITests
+    dependencies:
+      - target: SoftNotes
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.owaistaha.softnotes.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: SoftNotes
+schemes:
+  SoftNotes:
+    build:
+      targets:
+        SoftNotes: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - SoftNotesUITests

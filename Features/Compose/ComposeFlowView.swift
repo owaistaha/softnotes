@@ -62,7 +62,7 @@ struct ComposeNavBar: View {
 
     var body: some View {
         HStack {
-            circleButton("chevron.left", label: "Back", action: onBack)
+            circleButton("chevron.left", label: "Back", id: "composeBack", action: onBack)
             Spacer()
             VStack(spacing: 2) {
                 Text("New note")
@@ -74,12 +74,12 @@ struct ComposeNavBar: View {
                     .contentTransition(.numericText(value: Double(step)))
             }
             Spacer()
-            circleButton("xmark", label: "Close", action: onClose)
+            circleButton("xmark", label: "Close", id: "composeClose", action: onClose)
         }
         .padding(.top, 4)
     }
 
-    private func circleButton(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
+    private func circleButton(_ symbol: String, label: String, id: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 13, weight: .semibold))
@@ -89,5 +89,6 @@ struct ComposeNavBar: View {
         }
         .buttonStyle(.pressable(scale: 0.9))
         .accessibilityLabel(label)
+        .accessibilityIdentifier(id)
     }
 }

@@ -384,6 +384,37 @@ iPad, widgets, sync, custom fonts. Don't start these on your own.
 
 ---
 
+## Test & screenshot loop (use this in every step)
+
+`SoftNotesUITests` is a UI-test target (defined in `project.yml`, sources in
+`SoftNotesUITests/`). Tests tap through the app and attach screenshots
+(`XCTAttachment`, `.keepAlways`) — including timed bursts at ~0 / 150 / 300 /
+600 ms after a tap, with the *actual* capture time in the file name — so
+motion can be inspected frame by frame. Buttons the tests need carry
+`accessibilityIdentifier`s (`primaryAction` is the Home FAB *and* the compose
+Next button; `composeBack`, `composeClose`; picker cells `iconCell_<index>`).
+
+```
+scripts/ui-shots.sh                 # run all UI tests, export screenshots
+scripts/ui-shots.sh <testMethodName>  # run one (e.g. testFabMorphOpenAndClose)
+```
+
+It runs `xcodebuild test` (simulator: `SIM_NAME`, default "iPhone 17 Pro"),
+writes DerivedData and the `.xcresult` under `$TMPDIR/softnotes-uitests/`
+(never inside the repo), then `xcrun xcresulttool export attachments` and
+copies every screenshot to **`build/shots/ui/<attachment name>.png`**
+(git-ignored). Look at them with the Read tool; tile bursts with ffmpeg
+(`ffmpeg -i a.png -i b.png … -filter_complex hstack`).
+Add a test (and its identifiers) for every new interaction you build.
+To measure a motion, script it: e.g. find the FAB disc's centroid and
+darkness per frame (a solid ink disc reads ≈ 23 on a 0–255 gray scale).
+
+Launch arguments (DEBUG only): `-demoSave` — on the compose flow's last
+implemented step, Next files a demo note so Home's save choreography can be
+tested before the real fold exists.
+
+---
+
 ## Hard rules
 
 - **Use the design system.** Colours from `Theme.Palette` / `PastelTone`,

@@ -160,6 +160,9 @@ struct PrimaryActionButton: View {
         }
         .buttonStyle(.pressable(scale: 0.92))
         .accessibilityLabel(accessibilityLabel)
+        // Same id for the Home FAB and the compose Next button: only one is
+        // ever present at a time (see the matched-geometry contract).
+        .accessibilityIdentifier(FlowID.primaryAction)
     }
 }
 

@@ -180,7 +180,9 @@ enum PastelTone: String, CaseIterable, Codable, Identifiable, Hashable {
 // is a close match; swap `design`/family here if you license a custom face.
 
 extension Font {
-    static let softLargeTitle = Font.system(size: 34, weight: .bold)
+    /// Home/Saved header. Measured on the 14.0 s frame: "Notes" ink ≈94pt
+    /// wide, cap height ≈25.6pt → 36pt (34pt gave 88 × 24.3).
+    static let softLargeTitle = Font.system(size: 36, weight: .bold)
     /// Compose step titles — measured ≈ 28pt with tight leading (31pt pitch).
     static let softTitle      = Font.system(size: 28, weight: .bold)
     static let softHeadline   = Font.system(size: 16, weight: .semibold)

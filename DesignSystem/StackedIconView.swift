@@ -71,7 +71,7 @@ struct StackedIconView: View {
                 )
                 // Thin outline glyph (per reference), not a filled symbol.
                 Image(systemName: icon.symbol)
-                    .font(.system(size: size * 0.32, weight: .regular))
+                    .font(.system(size: size * Theme.Glyph.scale, weight: Theme.Glyph.weight))
                     .foregroundStyle(.white)
                     .shadow(color: icon.tone.base.opacity(0.45), radius: 1.5, y: 0.5)
             }

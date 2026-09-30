@@ -76,6 +76,16 @@ enum Theme {
         static let fabRing: CGFloat       = 5
     }
 
+    /// The outline glyph on every stacked icon (chips, rows, tabs, picker,
+    /// card header). Measured on the picker's star at the reference's
+    /// resolution (1.24 px/pt): radius of gyration 5.96pt vs 5.30 at 0.32,
+    /// ink ≈1.7× ours at regular weight.
+    enum Glyph {
+        /// Glyph point size as a fraction of the icon's size.
+        static let scale: CGFloat = 0.38
+        static let weight: Font.Weight = .semibold
+    }
+
     /// One place to tune the whole app's physics.
     enum Motion {
         /// Tab pill, toggle knob, small UI state.

@@ -42,6 +42,7 @@ struct FloatingTabBar: View {
     var onPrimaryAction: () -> Void
 
     @Namespace private var pillNamespace
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// The FAB's centre sits exactly on the track's top edge (per reference),
     /// so the track is pushed down by half the FAB's outer diameter.
@@ -93,7 +94,7 @@ struct FloatingTabBar: View {
 
         return Button {
             guard !isSelected else { return }
-            withAnimation(Theme.Motion.snappy) { selection = tab }
+            withAnimation(reduceMotion ? Theme.Motion.crossFade : Theme.Motion.snappy) { selection = tab }
         } label: {
             VStack(spacing: 4) {
                 StackedIconView(icon: tab.icon, size: 24, isMuted: !isSelected)
@@ -106,8 +107,14 @@ struct FloatingTabBar: View {
             .frame(maxHeight: .infinity)
             .background {
                 if isSelected {
-                    SoftSurface(Capsule(), elevation: .raised)
-                        .matchedGeometryEffect(id: "tabPill", in: pillNamespace)
+                    // Slides between tabs; with Reduce Motion it fades instead.
+                    if reduceMotion {
+                        SoftSurface(Capsule(), elevation: .raised)
+                            .transition(.opacity)
+                    } else {
+                        SoftSurface(Capsule(), elevation: .raised)
+                            .matchedGeometryEffect(id: "tabPill", in: pillNamespace)
+                    }
                 }
             }
             .contentShape(Capsule())

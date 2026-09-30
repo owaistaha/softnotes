@@ -48,6 +48,7 @@ struct FolderCard: View {
     /// Decided on a drag's first movement (scrolling Home only): true =
     /// vertical, the scroll view's — no tilt for this drag.
     @State private var dragIsScroll: Bool?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     // Geometry measured from the reference (points, 393pt-wide phone).
     // Static so the save flight can aim at it from the folder's frame alone.
@@ -88,7 +89,8 @@ struct FolderCard: View {
         .rotation3DEffect(.degrees(tilt.width), axis: (x: 0, y: 1, z: 0), perspective: 0.55)
         .rotation3DEffect(.degrees(-tilt.height), axis: (x: 1, y: 0, z: 0), perspective: 0.55)
         // "Received a note" bounce whenever the count changes
-        .keyframeAnimator(initialValue: 1.0, trigger: receivedCount ?? count) { content, scale in
+        // (Off with Reduce Motion: the trigger never changes.)
+        .keyframeAnimator(initialValue: 1.0, trigger: reduceMotion ? 0 : (receivedCount ?? count)) { content, scale in
             content.scaleEffect(scale, anchor: .bottom)
         } keyframes: { _ in
             SpringKeyframe(0.96, duration: 0.12, spring: .snappy)
@@ -147,7 +149,8 @@ struct FolderCard: View {
                         x: slot.point.x,
                         y: slot.point.y + (isOpen ? -14 : 0)
                     )
-                    .transition(note.id == landingNoteID ? .identity : Self.chipTransition)
+                    .transition(note.id == landingNoteID ? .identity
+                                : reduceMotion ? .opacity : Self.chipTransition)
                     // Newest on top: the chip that just landed must never pass
                     // behind the old centre chip shuffling out (video: it hid
                     // the hand-off for 3 frames).

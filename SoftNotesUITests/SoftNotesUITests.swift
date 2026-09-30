@@ -438,6 +438,37 @@ final class SoftNotesUITests: XCTestCase {
         snap("51_reduce_motion_home")
     }
 
+    /// The whole flow with Reduce Motion on (`-reduceMotion`): tab switch
+    /// (pill fades), + → picker (ring fades between cells, preview fades),
+    /// write, save (cross-fade, no flight), note filed.
+    func testReduceMotionFullFlow() {
+        relaunch(["-reduceMotion"])
+        XCTAssertTrue(app.buttons["primaryAction"].waitForExistence(timeout: 10))
+        app.buttons["Saved"].tap()
+        app.buttons["Home"].tap()
+        XCTAssertTrue(app.buttons["Home"].isSelected)
+
+        app.buttons["primaryAction"].tap()
+        XCTAssertTrue(app.buttons["iconCell_2"].waitForExistence(timeout: 5))
+        app.buttons["iconCell_2"].tap()
+        XCTAssertTrue(app.buttons["iconCell_2"].isSelected)
+        XCTAssertFalse(app.buttons["iconCell_4"].isSelected)
+        snap("52_reduce_motion_picker")
+        app.buttons["primaryAction"].tap()
+
+        XCTAssertTrue(noteText.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        noteText.typeText("Have a good day")
+        app.buttons["primaryAction"].tap()
+
+        let row = app.buttons["recentRow_0"]
+        let filed = expectation(for: NSPredicate(format: "label CONTAINS 'Have a good day'"), evaluatedWith: row)
+        wait(for: [filed], timeout: 10)
+        XCTAssertFalse(saveInFlight.exists, "Reduce Motion must not run the flight")
+        XCTAssertEqual(app.otherElements["folder"].label, "Notes folder, 9 notes")
+        snap("53_reduce_motion_filed")
+    }
+
     // MARK: - Save helpers (identifier queries — cheaper than label predicates)
 
     private var saveInFlight: XCUIElement { app.descendants(matching: .any)["saveInFlight"] }

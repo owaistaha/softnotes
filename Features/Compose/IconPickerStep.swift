@@ -17,6 +17,7 @@ import SwiftUI
 struct IconPickerStep: View {
     @Bindable var draft: ComposeDraft
     @Namespace private var ringNamespace
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let columns = 4
 
@@ -53,7 +54,7 @@ struct IconPickerStep: View {
             StackedIconView(icon: draft.icon, size: 72, shapeOverride: .squircle, glass: .vivid)
                 // New identity per icon → the old one shrinks out, the new one springs in.
                 .id(draft.icon.id)
-                .transition(.scale(scale: 0.6).combined(with: .opacity))
+                .transition(reduceMotion ? .opacity : .scale(scale: 0.6).combined(with: .opacity))
         }
         .frame(width: Theme.Metrics.pickerPreview, height: Theme.Metrics.pickerPreview)
         // Keep the icon's tone glow inside the white disc (the reference has no halo outside).
@@ -77,9 +78,14 @@ struct IconPickerStep: View {
                         IconCell(
                             icon: icon,
                             isSelected: icon == draft.icon,
+                            // Reduce Motion: each cell fades its own ring in/out
+                            // instead of one ring gliding between cells.
+                            showsOwnRing: reduceMotion && icon == draft.icon,
                             ringNamespace: ringNamespace
                         ) {
-                            withAnimation(Theme.Motion.bouncy) { draft.icon = icon }
+                            withAnimation(reduceMotion ? Theme.Motion.crossFade : Theme.Motion.bouncy) {
+                                draft.icon = icon
+                            }
                         }
                         .accessibilityIdentifier("iconCell_\(rowIndex * columns + column)")
                     }
@@ -87,7 +93,7 @@ struct IconPickerStep: View {
             }
         }
 
-        return grid.overlay { selectionRing }
+        return grid.overlay { if !reduceMotion { selectionRing } }
     }
 
     /// One persistent ring that follows the selected cell. Each cell publishes
@@ -112,6 +118,7 @@ struct IconPickerStep: View {
 private struct IconCell: View {
     let icon: NoteIcon
     let isSelected: Bool
+    var showsOwnRing: Bool = false
     let ringNamespace: Namespace.ID
     var action: () -> Void
 
@@ -125,6 +132,15 @@ private struct IconCell: View {
                 .background(SoftSurface(Circle(), elevation: .raised))
         }
         .buttonStyle(IconCellButtonStyle(tone: icon.tone))
+        .overlay {
+            if showsOwnRing {
+                Circle()
+                    .strokeBorder(icon.tone.ring, lineWidth: Theme.Metrics.pickerRingWidth)
+                    .frame(width: Theme.Metrics.pickerRing, height: Theme.Metrics.pickerRing)
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+            }
+        }
         // Anchor for the shared selection ring (see IconPickerStep.selectionRing).
         .background {
             Color.clear

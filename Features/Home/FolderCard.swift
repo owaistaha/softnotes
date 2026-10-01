@@ -102,7 +102,7 @@ struct FolderCard: View {
         .simultaneousGesture(tiltGesture)
         .sensoryFeedback(.impact(weight: .light), trigger: isOpen)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Notes folder, \(count) notes")
+        .accessibilityLabel("Notes folder, \(count) \(count == 1 ? "note" : "notes")")
         .accessibilityValue(isOpen ? "Open" : "Closed")
         .accessibilityIdentifier("folder")
     }

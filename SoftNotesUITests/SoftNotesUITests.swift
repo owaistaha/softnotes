@@ -170,9 +170,19 @@ final class SoftNotesUITests: XCTestCase {
         app.buttons["iconCell_2"].tap()
         app.buttons["primaryAction"].tap()                       // → step 2
         XCTAssertTrue(app.staticTexts["Step 2 of 2"].waitForExistence(timeout: 3))
+        // Auto-focus raises the keyboard ≈0.85 s in and Next rides up with it:
+        // a tap on the moving button can miss (the flake before Step 7). Let it settle.
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 0.8)
         XCTAssertTrue(app.buttons["primaryAction"].isEnabled, "-demoSave should enable Next on the write step")
         app.buttons["primaryAction"].tap()                       // → demo save
-        XCTAssertTrue(app.staticTexts["Have a good day"].waitForExistence(timeout: 10), "demo note should appear in Recent")
+        // The row is ONE accessibility element ("<title>, <time>") since 6B, so
+        // wait on its label. The save takes ≈5.5 s and up to ≈12 s on a loaded
+        // host (the old 10 s wait flaked 2 in 10 runs, before and after Step 7).
+        let top = app.buttons["recentRow_0"]
+        let arrived = expectation(for: NSPredicate(format: "label BEGINSWITH %@", "Have a good day, "),
+                                  evaluatedWith: top)
+        wait(for: [arrived], timeout: 25)
         Thread.sleep(forTimeInterval: 1.5)
         snap("20_demo_saved_home")
     }
@@ -514,6 +524,149 @@ final class SoftNotesUITests: XCTestCase {
         XCTAssertFalse(saveInFlight.exists, "Reduce Motion must not run the flight")
         XCTAssertEqual(app.otherElements["folder"].label, "Notes folder, 9 notes")
         snap("53_reduce_motion_filed")
+    }
+
+    // MARK: - Step 7 (notes persist between launches)
+    //
+    // These run against the REAL file (no -inMemoryStore) in the simulator's
+    // app container; the first launch of each test passes -resetStore.
+
+    private func launchOnDisk(_ arguments: [String] = []) {
+        app.terminate()
+        app.launchArguments = arguments + ["-watchdog"]
+        app.launch()
+        XCTAssertTrue(app.buttons["primaryAction"].waitForExistence(timeout: 10), "Home FAB not found")
+        Thread.sleep(forTimeInterval: 1.0)
+    }
+
+    private var folderLabel: String { app.otherElements["folder"].label }
+
+    /// Home → Saved tab.
+    private func openSavedTab() {
+        app.buttons["Saved"].tap()
+        Thread.sleep(forTimeInterval: 0.8)
+    }
+
+    private func rowButton(_ title: String) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", title + ", ")).firstMatch
+    }
+
+    private func contextMenu(on row: XCUIElement, choose item: String) {
+        row.press(forDuration: 1.0)
+        let button = app.buttons[item]
+        XCTAssertTrue(button.waitForExistence(timeout: 3), "context menu item \(item)")
+        button.tap()
+        Thread.sleep(forTimeInterval: 0.8)
+    }
+
+    /// Write a note, save it, wait for the save to finish, KILL the app (no
+    /// background flush: the debounced write must already have happened),
+    /// relaunch: the note is on top of Recent and the count went up by one.
+    func testSavedNoteSurvivesRelaunch() {
+        launchOnDisk(["-resetStore"])
+        XCTAssertEqual(folderLabel, "Notes folder, 8 notes")
+        openWriteStep()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+        noteText.typeText("Have a good day")
+        app.buttons["primaryAction"].tap()
+        waitForSaveToFinish()
+        assertFiled(count: 9)
+        Thread.sleep(forTimeInterval: 1.0)                  // > the 300 ms debounce
+        app.terminate()
+
+        launchOnDisk()
+        XCTAssertEqual(folderLabel, "Notes folder, 9 notes", "the count must have gone up by one")
+        let top = app.buttons["recentRow_0"]
+        XCTAssertTrue(top.waitForExistence(timeout: 3))
+        XCTAssertTrue(top.label.hasPrefix("Have a good day, "), "new note should still top Recent: \(top.label)")
+        let copies = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Have a good day, "))
+        // (Each row appears as a Button wrapping a same-framed Button — count distinct frames.)
+        let frames = Set((0..<copies.count).map { "\(copies.element(boundBy: $0).frame)" })
+        XCTAssertEqual(frames.count, 1, "exactly one copy on screen: \(frames)")
+        snap("80_relaunch_after_save")
+
+        // And once more: nothing is re-seeded or duplicated.
+        launchOnDisk()
+        XCTAssertEqual(folderLabel, "Notes folder, 9 notes")
+    }
+
+    /// Toggle Saved on a note, send the app home (scene → background flushes
+    /// within the debounce window), kill it, relaunch: still saved.
+    func testSavedToggleSurvivesRelaunch() {
+        launchOnDisk(["-resetStore"])
+        let cherries = rowButton("Buy fresh cherries")
+        XCTAssertTrue(cherries.waitForExistence(timeout: 3))
+        contextMenu(on: cherries, choose: "Save")
+        openSavedTab()
+        XCTAssertTrue(rowButton("Buy fresh cherries").exists, "it should be in Saved now")
+        XCUIDevice.shared.press(.home)                      // flush on background, no waiting
+        app.terminate()
+
+        launchOnDisk()
+        openSavedTab()
+        XCTAssertTrue(rowButton("Buy fresh cherries").waitForExistence(timeout: 3), "still saved after relaunch")
+        XCTAssertTrue(rowButton("Launch day checklist").exists, "the seeded saved notes are still there")
+        snap("81_saved_after_relaunch")
+    }
+
+    /// Delete a note, relaunch: still deleted (and not re-seeded).
+    func testDeletedNoteStaysDeleted() {
+        launchOnDisk(["-resetStore"])
+        let cherries = rowButton("Buy fresh cherries")
+        XCTAssertTrue(cherries.waitForExistence(timeout: 3))
+        contextMenu(on: cherries, choose: "Delete")
+        XCTAssertFalse(rowButton("Buy fresh cherries").exists)
+        XCTAssertEqual(folderLabel, "Notes folder, 7 notes")
+        Thread.sleep(forTimeInterval: 1.0)
+        app.terminate()
+
+        launchOnDisk()
+        XCTAssertEqual(folderLabel, "Notes folder, 7 notes")
+        XCTAssertFalse(rowButton("Buy fresh cherries").exists, "the deleted note must not come back")
+        snap("82_home_after_delete_relaunch")
+    }
+
+    /// Zero notes: no chips, sensible empty states on Home and Saved, and an
+    /// empty list stays empty across launches (never re-seeded).
+    func testEmptyStoreStaysEmpty() {
+        launchOnDisk(["-resetStore", "-emptyStore"])
+        XCTAssertEqual(folderLabel, "Notes folder, 0 notes")
+        XCTAssertTrue(app.staticTexts["No notes yet. Tap + to write your first one."].exists)
+        XCTAssertFalse(app.buttons["recentRow_0"].exists)
+        snap("83_empty_home")
+        openSavedTab()
+        XCTAssertTrue(app.staticTexts["No saved notes"].exists)
+        snap("84_empty_saved")
+        app.terminate()
+
+        launchOnDisk()
+        XCTAssertEqual(folderLabel, "Notes folder, 0 notes", "an empty list must not be re-seeded")
+    }
+
+    /// The demo flows must not write the real file: a demo save in one launch
+    /// leaves the next (real) launch at the seeded 8 notes.
+    func testDemoFlowsDoNotTouchTheRealFile() {
+        launchOnDisk(["-resetStore"])
+        XCTAssertEqual(folderLabel, "Notes folder, 8 notes")
+        launchOnDisk(["-demoFold"])
+        waitOutDemoKeyboard()
+        waitForSaveToFinish()
+        assertFiled(count: 9)
+        Thread.sleep(forTimeInterval: 1.0)
+        launchOnDisk()
+        XCTAssertEqual(folderLabel, "Notes folder, 8 notes", "the demo note must not have been persisted")
+    }
+
+    /// The (unchanged) save sequence into an EMPTY store: no chips to shuffle,
+    /// count 0 → 1, the note tops Recent, nothing left in flight.
+    func testSaveIntoEmptyStore() {
+        relaunch(["-emptyStore", "-demoFold"])
+        waitOutDemoKeyboard()
+        waitForSaveToFinish()
+        XCTAssertEqual(folderLabel, "Notes folder, 1 note")
+        XCTAssertTrue(app.buttons["recentRow_0"].label.hasPrefix("Have a good day, "))
+        Thread.sleep(forTimeInterval: 1.0)
+        snap("85_first_note_into_empty_store")
     }
 
     // MARK: - Save helpers (identifier queries — cheaper than label predicates)

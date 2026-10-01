@@ -65,6 +65,7 @@ struct HomeView: View {
 
                 RecentNotesSection(
                     notes: store.recent.filter { $0.id != heldNoteID },
+                    hasAnyNotes: store.count > 0 || heldNoteID != nil,
                     onSeeAll: onSeeAll,
                     onSelect: onSelectNote
                 )

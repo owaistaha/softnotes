@@ -17,7 +17,10 @@ import SwiftUI
 ///   ├─ ComposeFlowView (when composing)
 ///   └─ FoldStage — the save flight (full-screen, global space, above both)
 struct RootContainerView: View {
-    @State private var store = NotesStore()
+    /// Created ONCE by the app (a `@State` initial value is re-evaluated each
+    /// time this struct is rebuilt — with a store that loads a file, that
+    /// would load / seed more than once).
+    @State private var store: NotesStore
     @State private var selectedTab: AppTab = .home
     @State private var isComposing = false
     @State private var isFolderOpen = false
@@ -53,6 +56,10 @@ struct RootContainerView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     @Namespace private var flowNamespace
+
+    init(store: NotesStore = NotesStore()) {
+        _store = State(initialValue: store)
+    }
 
     /// Reference: during the push the folder is shown ×1.30 its Home size
     /// (front panel 0.565 → 0.732 of the screen width), centre chip at 0.549
@@ -145,7 +152,10 @@ struct RootContainerView: View {
             if canMeasureHome && frame != folderFrame { folderFrame = frame }
         }
         .onChange(of: scenePhase) { _, phase in
+            // Order matters: a fast-forward may still add the note in flight,
+            // and the flush must see it.
             if phase == .background { finishSaveNow() }
+            if phase != .active { store.flush() }
         }
         .sensoryFeedback(.success, trigger: store.count) { old, new in new > old }
         .task { await runDemoFoldIfRequested() }

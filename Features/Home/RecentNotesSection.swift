@@ -2,6 +2,8 @@ import SwiftUI
 
 struct RecentNotesSection: View {
     let notes: [Note]
+    /// False only when the store is completely empty (different copy).
+    var hasAnyNotes = true
     var onSeeAll: () -> Void
     var onSelect: (Note) -> Void
 
@@ -20,7 +22,9 @@ struct RecentNotesSection: View {
             .padding(.horizontal, Theme.Metrics.listTextInset)
 
             if notes.isEmpty {
-                Text("Nothing new in the last two days. Tap + to write a note.")
+                Text(hasAnyNotes
+                     ? "Nothing new in the last two days. Tap + to write a note."
+                     : "No notes yet. Tap + to write your first one.")
                     .font(.softCaption)
                     .foregroundStyle(Theme.Palette.inkSecondary)
                     .padding(.vertical, 16)

@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 enum IconShape: String, Codable, Hashable {
     case circle, squircle
@@ -10,6 +11,43 @@ struct NoteIcon: Codable, Hashable, Identifiable {
     var shape: IconShape = .squircle
 
     var id: String { "\(symbol)-\(tone.rawValue)" }
+
+    // MARK: Tolerant coding (stored files outlive SF Symbol / tone renames)
+
+    /// Shown when a stored symbol isn't a symbol on this OS (renamed or
+    /// removed while the app was in development).
+    static let fallbackSymbol = "doc.text"
+    static let fallbackTone: PastelTone = .lavender
+
+    private enum CodingKeys: String, CodingKey { case symbol, tone, shape }
+
+    init(symbol: String, tone: PastelTone, shape: IconShape = .squircle) {
+        self.symbol = symbol
+        self.tone = tone
+        self.shape = shape
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let stored = (try? c.decodeIfPresent(String.self, forKey: .symbol)) ?? nil
+        symbol = stored.flatMap { Self.isValidSymbol($0) ? $0 : nil } ?? Self.fallbackSymbol
+        let tone = (try? c.decodeIfPresent(String.self, forKey: .tone)) ?? nil
+        self.tone = tone.flatMap(PastelTone.init(rawValue:)) ?? Self.fallbackTone
+        let shape = (try? c.decodeIfPresent(String.self, forKey: .shape)) ?? nil
+        self.shape = shape.flatMap(IconShape.init(rawValue:)) ?? .squircle
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(symbol, forKey: .symbol)
+        try c.encode(tone.rawValue, forKey: .tone)
+        try c.encode(shape.rawValue, forKey: .shape)
+    }
+
+    /// Is `name` a real SF Symbol on this OS? (A missing one renders blank.)
+    static func isValidSymbol(_ name: String) -> Bool {
+        UIImage(systemName: name) != nil
+    }
 
     /// VoiceOver name. Spoken names for the library's symbols (the raw
     /// symbol name reads as "Sun max", "Figure walk"); anything else falls
@@ -59,6 +97,34 @@ struct Note: Identifiable, Hashable, Codable {
     var tags: [String]
     var createdAt: Date
     var isSaved: Bool
+
+    // MARK: Tolerant coding — only a title and a date are required; one bad
+    // note is skipped by the loader, never the whole file.
+
+    private enum CodingKeys: String, CodingKey { case id, title, body, icon, tags, createdAt, isSaved }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let rawID = (try? c.decodeIfPresent(String.self, forKey: .id)) ?? nil
+        id = rawID.flatMap(UUID.init(uuidString:)) ?? UUID()
+        title = try c.decode(String.self, forKey: .title)
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+        body = (try? c.decodeIfPresent(String.self, forKey: .body)) ?? ""
+        icon = (try? c.decodeIfPresent(NoteIcon.self, forKey: .icon)) ?? NoteIcon.defaultIcon
+        tags = (try? c.decodeIfPresent([String].self, forKey: .tags)) ?? []
+        isSaved = (try? c.decodeIfPresent(Bool.self, forKey: .isSaved)) ?? false
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id.uuidString, forKey: .id)
+        try c.encode(title, forKey: .title)
+        try c.encode(body, forKey: .body)
+        try c.encode(icon, forKey: .icon)
+        try c.encode(tags, forKey: .tags)
+        try c.encode(createdAt, forKey: .createdAt)
+        try c.encode(isSaved, forKey: .isSaved)
+    }
 
     init(
         id: UUID = UUID(),

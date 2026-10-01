@@ -18,7 +18,7 @@ final class SoftNotesUITests: XCTestCase {
         app = XCUIApplication()
         // DEBUG main-thread watchdog: stalls > 500 ms go to os_log
         // (com.owaistaha.softnotes / watchdog) — see CLAUDE.md.
-        app.launchArguments = ["-watchdog"]
+        app.launchArguments = ["-watchdog", "-inMemoryStore"]
         app.launch()
         XCTAssertTrue(app.buttons["primaryAction"].waitForExistence(timeout: 10), "Home FAB not found")
         // Let the launch settle (idle chip float, etc.) before the first tap.
@@ -412,7 +412,7 @@ final class SoftNotesUITests: XCTestCase {
 
     private func relaunch(_ arguments: [String]) {
         app.terminate()
-        app.launchArguments = arguments + ["-watchdog"]
+        app.launchArguments = arguments + ["-watchdog", "-inMemoryStore"]
         app.launch()
     }
 

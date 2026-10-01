@@ -2,9 +2,12 @@ import SwiftUI
 
 @main
 struct SoftNotesApp: App {
+    /// One store for the process, loaded from disk here (see NotesStore).
+    private let store = NotesStore.makeForLaunch()
+
     var body: some Scene {
         WindowGroup {
-            RootContainerView()
+            RootContainerView(store: store)
                 // The soft-UI palette is designed for light mode only (for now).
                 .preferredColorScheme(.light)
                 .modifier(DebugReduceMotion())

@@ -907,6 +907,116 @@ final class SoftNotesUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 0.8)
     }
 
+    // MARK: - Step 9 (See all, Search)
+
+    private func openAllNotes() {
+        let seeAll = app.buttons["See all"]
+        XCTAssertTrue(seeAll.waitForExistence(timeout: 5))
+        seeAll.tap()
+        XCTAssertTrue(app.buttons["allBack"].waitForExistence(timeout: 5), "All Notes should open")
+        Thread.sleep(forTimeInterval: 1.0)
+    }
+
+    private func closeAllNotes() {
+        app.buttons["allBack"].tap()
+        let gone = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.buttons["allBack"])
+        wait(for: [gone], timeout: 5)
+        Thread.sleep(forTimeInterval: 0.5)
+    }
+
+    /// Titles and ages (seconds) of `Note.samples`.
+    private static let sampleAges: [(title: String, age: TimeInterval)] = [
+        ("Buy fresh cherries", 2 * 3600), ("Launch day checklist", 26 * 3600), ("Book club picks", 4 * 86400),
+        ("Water the monstera", 6 * 86400), ("Gift ideas for Mum", 9 * 86400), ("Morning pages", 12 * 86400),
+        ("Run club route", 15 * 86400), ("Coffee beans to try", 21 * 86400),
+    ]
+
+    /// Expected group of a sample, worked out from calendar days (independently of NoteGroup).
+    private func expectedGroup(age: TimeInterval) -> String {
+        let cal = Calendar.current, now = Date(), date = now - age
+        let days = cal.dateComponents([.day], from: cal.startOfDay(for: date), to: cal.startOfDay(for: now)).day ?? 99
+        if days <= 0 { return "Today" }
+        if days == 1 { return "Yesterday" }
+        return cal.isDate(date, equalTo: now, toGranularity: .weekOfYear) ? "This week" : "Earlier"
+    }
+
+    /// See all opens an All Notes screen with every note, grouped, newest first.
+    func testSeeAllListsEverythingGrouped() {
+        openAllNotes()
+        snap("100_all_notes")
+        XCTAssertTrue(app.staticTexts["All notes"].exists)
+        // Every note is there.
+        for (title, _) in Self.sampleAges { XCTAssertTrue(rowButton(title).exists, "\(title) should be listed") }
+        // Group headers, in order, with the right rows under each.
+        let order = ["Today", "Yesterday", "This week", "Earlier"]
+        var expected: [String: [String]] = [:]
+        for (title, age) in Self.sampleAges { expected[expectedGroup(age: age), default: []].append(title) }
+        let headerElement = { (name: String) in self.app.staticTexts["allGroup_\(name)"] }
+        let headers = order.filter { headerElement($0).exists }
+        XCTAssertEqual(headers, order.filter { expected[$0] != nil }, "group headers present, in order")
+        for (i, header) in headers.enumerated() {
+            let top = headerElement(header).frame.minY
+            let bottom = i + 1 < headers.count ? headerElement(headers[i + 1]).frame.minY : .greatestFiniteMagnitude
+            let rows = Self.sampleAges.map(\.title).filter {
+                let y = rowButton($0).frame.minY
+                return y > top && y < bottom
+            }
+            XCTAssertEqual(rows, expected[header], "rows under \(header) (newest first)")
+        }
+        closeAllNotes()
+        XCTAssertTrue(app.otherElements["folder"].exists, "back on Home")
+    }
+
+    /// Context menu: Save / Delete from All Notes; tapping a row opens the detail on top, closing returns here.
+    func testAllNotesContextMenuAndDetail() {
+        openAllNotes()
+        contextMenu(on: rowButton("Buy fresh cherries"), choose: "Save")
+        closeAllNotes()
+        openSavedTab()
+        XCTAssertTrue(rowButton("Buy fresh cherries").waitForExistence(timeout: 3), "saved from All Notes")
+        app.buttons["Home"].tap()
+        Thread.sleep(forTimeInterval: 0.6)
+        openAllNotes()
+        contextMenu(on: rowButton("Coffee beans to try"), choose: "Delete")
+        XCTAssertFalse(rowButton("Coffee beans to try").exists)
+        // Open a row → detail → back to All Notes.
+        rowButton("Book club picks").tap()
+        XCTAssertTrue(app.buttons["detailBack"].waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 1.0)
+        XCTAssertEqual(detailText.value as? String, "Book club picks")
+        snap("101_all_notes_detail")
+        closeDetail()
+        XCTAssertTrue(app.buttons["allBack"].exists, "closing the detail returns to All Notes")
+        closeAllNotes()
+        XCTAssertEqual(app.otherElements["folder"].label, "Notes folder, 7 notes")
+    }
+
+    /// Open from All Notes, edit, close, relaunch: the edit persisted.
+    func testAllNotesOpenEditRelaunch() {
+        launchOnDisk(["-resetStore"])
+        openAllNotes()
+        rowButton("Water the monstera").tap()
+        XCTAssertTrue(app.buttons["detailBack"].waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 1.0)
+        replaceDetailText(with: "Water the ferns")
+        closeDetail()
+        XCTAssertTrue(rowButton("Water the ferns").exists)
+        Thread.sleep(forTimeInterval: 1.0)
+        app.terminate()
+        launchOnDisk()
+        openAllNotes()
+        XCTAssertTrue(rowButton("Water the ferns").waitForExistence(timeout: 3), "edit survives a relaunch")
+        XCTAssertFalse(rowButton("Water the monstera").exists)
+    }
+
+    func testAllNotesEmptyState() {
+        launchOnDisk(["-resetStore", "-emptyStore"])
+        openAllNotes()
+        XCTAssertTrue(app.staticTexts["No notes yet"].exists)
+        snap("102_all_notes_empty")
+        closeAllNotes()
+    }
+
     // MARK: - Save helpers (identifier queries — cheaper than label predicates)
 
     private var saveInFlight: XCUIElement { app.descendants(matching: .any)["saveInFlight"] }

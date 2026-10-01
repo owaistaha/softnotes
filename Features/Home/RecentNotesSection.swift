@@ -50,11 +50,27 @@ struct NoteRow: View {
     @Environment(NotesStore.self) private var store
     let note: Note
     /// Called with the row's global frame (the detail overlay grows from it).
+    /// Search: the words to emphasise in the title (and the matched tag).
+    var query: String = ""
     var action: (CGRect) -> Void
     @Environment(\.detailSourceNoteID) private var detailSourceNoteID
     @State private var frame: CGRect = .zero
 
     private let shape = RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous)
+
+    private var matchedTag: String? { NoteSearch.matchedTag(of: note, query: query) }
+
+    /// The title with the searched words slightly emphasised (bolder, lavender ink).
+    private func emphasised(_ title: String) -> AttributedString {
+        var text = AttributedString(title)
+        for range in NoteSearch.ranges(in: title, query: query) {
+            let lower = text.index(text.startIndex, offsetByCharacters: title.distance(from: title.startIndex, to: range.lowerBound))
+            let upper = text.index(text.startIndex, offsetByCharacters: title.distance(from: title.startIndex, to: range.upperBound))
+            text[lower..<upper].font = Font.softRowTitle.weight(.bold)
+            text[lower..<upper].foregroundColor = Theme.Palette.lavenderInk
+        }
+        return text
+    }
 
     var body: some View {
         Button { action(frame) } label: {
@@ -65,15 +81,22 @@ struct NoteRow: View {
                     .transaction { $0.animation = nil }
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(note.title)
+                    Text(emphasised(note.title))
                         .font(.softRowTitle)
                         .foregroundStyle(Theme.Palette.ink)
                         .lineLimit(1)
                     // Re-render once a minute so "Just now" → "1m ago" stays honest.
-                    TimelineView(.periodic(from: .now, by: 60)) { context in
-                        Text(note.createdAt.softRelative(to: context.date))
-                            .font(.softCaption)
-                            .foregroundStyle(Theme.Palette.inkSecondary)
+                    HStack(spacing: 4) {
+                        TimelineView(.periodic(from: .now, by: 60)) { context in
+                            Text(note.createdAt.softRelative(to: context.date))
+                                .font(.softCaption)
+                                .foregroundStyle(Theme.Palette.inkSecondary)
+                        }
+                        if let tag = matchedTag {
+                            Text("· #" + tag.lowercased())
+                                .font(.softCaption.weight(.semibold))
+                                .foregroundStyle(Theme.Palette.lavenderInk)
+                        }
                     }
                 }
 
@@ -107,7 +130,8 @@ struct NoteRow: View {
         }
         // One element: "<title>, <relative time>", a button (no chevron).
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(note.title), \(note.createdAt.softRelative(to: .now))")
+        .accessibilityLabel("\(note.title), \(note.createdAt.softRelative(to: .now))"
+                            + (matchedTag.map { ", tagged \($0)" } ?? ""))
         .accessibilityAddTraits(.isButton)
         .accessibilityHint("Opens the note")
     }

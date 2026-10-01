@@ -53,14 +53,19 @@ struct RootContainerView: View {
     @State private var keyboardCycleReport: String?
     /// Step 8: the open note (nil = none). The overlay owns its own animation.
     @State private var detail: DetailSession?
+    /// Step 9: "See all" (All Notes) — an in-place overlay, like compose and the detail.
+    @State private var showsAllNotes = false
 
     /// One open note: what was tapped, where, and its edit buffer.
     private struct DetailSession {
         let id: Note.ID
         let sourceFrame: CGRect
-        let tab: AppTab
+        let source: DetailSource
         let draft: ComposeDraft
     }
+
+    /// Which list the open note came from (closing flies back to its row there).
+    private enum DetailSource { case home, saved, all }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
@@ -108,8 +113,8 @@ struct RootContainerView: View {
                 .offset(homeTransform.offset)
                 .blur(radius: isComposing && !reduceMotion ? 14 : 0)
                 .opacity(isComposing ? 0 : 1)
-                .allowsHitTesting(!isComposing && foldPhase == .idle && detail == nil)
-                .environment(\.detailSourceNoteID, detail?.id)
+                .allowsHitTesting(!isComposing && foldPhase == .idle && !overlaysOpen)
+                .accessibilityHidden(overlaysOpen)
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     FloatingTabBar(
                         selection: $selectedTab,
@@ -125,7 +130,7 @@ struct RootContainerView: View {
                     .blur(radius: chromeHidden ? 8 : 0)
                     .offset(y: chromeHidden ? 24 : 0)
                     .animation(Theme.Motion.chromeIn, value: chromeHidden)
-                    .allowsHitTesting(foldPhase == .idle && detail == nil)
+                    .allowsHitTesting(foldPhase == .idle && !overlaysOpen)
                 }
 
             // Always in the hierarchy; it shows/hides its own contents so the
@@ -141,6 +146,19 @@ struct RootContainerView: View {
             )
             .zIndex(1)
 
+            // Step 9: All Notes (above Home, below the note detail).
+            if showsAllNotes {
+                AllNotesView(
+                    onBack: closeAllNotes,
+                    onSearch: {},
+                    onSelectNote: { openDetail($0, from: $1, source: .all) }
+                )
+                .transition(overlayTransition)
+                .accessibilityHidden(detail != nil)
+                .allowsHitTesting(detail == nil)
+                .zIndex(1.2)
+            }
+
             // Step 8: the open note — an in-place overlay (not a sheet) that grows
             // from the tapped row. Fresh state per note (`.id`).
             if let detail {
@@ -153,7 +171,7 @@ struct RootContainerView: View {
                     onClose: { self.detail = nil }
                 )
                 .id(detail.id)
-                .zIndex(1)
+                .zIndex(1.6)
             }
 
             // Always mounted: it animates its own progress values (see FoldStage).
@@ -172,6 +190,8 @@ struct RootContainerView: View {
             }
         }
         .environment(store)
+        // Rows hide their icon while the overlay's flying icon stands in (any list).
+        .environment(\.detailSourceNoteID, detail?.id)
         // The write step hides the status bar while typing (reference).
         .statusBarHidden((isComposing && draft.isEditingText) || (detail?.draft.isEditingText ?? false))
         .onPreferenceChange(FolderFrameKey.self) { frame in
@@ -238,12 +258,12 @@ struct RootContainerView: View {
                     // during the push, the leaving right chip showed as Home rose.
                     vacatesCentreChip: foldPhase >= .folded && foldPhase < .landed,
                     countLead: countLead,
-                    onSeeAll: { withAnimation(Theme.Motion.snappy) { selectedTab = .saved } },
-                    onSelectNote: openDetail
+                    onSeeAll: openAllNotes,
+                    onSelectNote: { openDetail($0, from: $1, source: .home) }
                 )
                 .transition(.blurFade)
             case .saved:
-                SavedView(onSelectNote: openDetail)
+                SavedView(onSelectNote: { openDetail($0, from: $1, source: .saved) })
                     .transition(.blurFade)
             }
         }
@@ -323,19 +343,42 @@ struct RootContainerView: View {
 
     // MARK: - Note detail (Step 8)
 
-    private func openDetail(_ note: Note, from rowFrame: CGRect) {
+    private func openDetail(_ note: Note, from rowFrame: CGRect, source: DetailSource) {
         guard foldPhase == .idle, !isComposing, detail == nil, let current = store.note(withID: note.id) else { return }
-        detail = DetailSession(id: current.id, sourceFrame: rowFrame, tab: selectedTab,
+        detail = DetailSession(id: current.id, sourceFrame: rowFrame, source: source,
                                draft: ComposeDraft(editing: current))
     }
 
     /// Closing flies back to the row only if the list the note was opened
-    /// from still shows it (an unsaved note leaves the Saved tab).
+    /// from still shows it (an unsaved note leaves the Saved tab; a deleted one is gone).
     private func detailRowIsListed(_ session: DetailSession) -> Bool {
-        switch session.tab {
+        switch session.source {
         case .home:  store.recent.contains { $0.id == session.id }
         case .saved: store.saved.contains { $0.id == session.id }
+        case .all:   store.note(withID: session.id) != nil
         }
+    }
+
+    // MARK: - All Notes / overlays (Step 9)
+
+    private var overlaysOpen: Bool { detail != nil || showsAllNotes }
+
+    /// Overlay in/out: blur-fade (Reduce Motion: plain fade).
+    private var overlayTransition: AnyTransition {
+        reduceMotion ? .opacity : AnyTransition(.blurFade)
+    }
+
+    private var overlayAnimation: Animation {
+        reduceMotion ? Theme.Motion.crossFade : Theme.Motion.smooth
+    }
+
+    private func openAllNotes() {
+        guard foldPhase == .idle, !isComposing, !overlaysOpen else { return }
+        withAnimation(overlayAnimation) { showsAllNotes = true }
+    }
+
+    private func closeAllNotes() {
+        withAnimation(overlayAnimation) { showsAllNotes = false }
     }
 
     private func cancelComposing() {

@@ -151,10 +151,10 @@ struct NoteDetailView: View {
 
     private var nav: some View {
         HStack(spacing: 10) {
-            DetailNavButton(symbol: "chevron.left", label: "Back", id: "detailBack", raised: true, action: back)
+            CircleNavButton(symbol: "chevron.left", label: "Back", id: "detailBack", raised: true, action: back)
             Spacer(minLength: 0)
             if !isPickingIcon {
-                DetailNavButton(
+                CircleNavButton(
                     symbol: isSaved ? "heart.fill" : "heart",
                     label: "Saved", id: "detailSave", raised: true,
                     tint: isSaved ? PastelTone.pink.base : nil,
@@ -162,7 +162,7 @@ struct NoteDetailView: View {
                     hint: "Keeps this note in Saved",
                     action: toggleSaved
                 )
-                DetailNavButton(
+                CircleNavButton(
                     symbol: "trash", label: "Delete", id: "detailDelete", raised: false,
                     hint: "Deletes this note. You will be asked to confirm.",
                     action: { confirmingDelete = true }
@@ -416,43 +416,6 @@ private struct FlightIcon: View, Animatable {
             .scaleEffect(lerp(1, NoteCardContent<NoteCardStaticText>.headerIconSize / 40))
             .rotationEffect(.degrees(lerp(0, -3)))
             .position(x: lerp(from.x, to.x) - origin.x, y: lerp(from.y, to.y) - origin.y)
-    }
-}
-
-// MARK: - Circular nav button (same look as the compose nav bar's)
-
-private struct DetailNavButton: View {
-    let symbol: String
-    let label: String
-    let id: String
-    let raised: Bool
-    var tint: Color? = nil
-    var traits: AccessibilityTraits = []
-    var value: String? = nil
-    var hint: String? = nil
-    var action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(tint ?? Theme.Palette.ink)
-                .frame(width: Theme.Metrics.navButton, height: Theme.Metrics.navButton)
-                .background {
-                    if raised {
-                        SoftSurface(Circle(), elevation: .raised)
-                    } else {
-                        Circle().fill(Theme.Palette.track)
-                    }
-                }
-                .contentTransition(.symbolEffect(.replace))
-        }
-        .buttonStyle(.pressable(scale: 0.9))
-        .accessibilityLabel(label)
-        .accessibilityValue(value ?? "")
-        .accessibilityHint(hint ?? "")
-        .accessibilityAddTraits(traits)
-        .accessibilityIdentifier(id)
     }
 }
 

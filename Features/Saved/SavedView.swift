@@ -36,17 +36,8 @@ struct SavedView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 14) {
-            StackedIconView(icon: AppTab.saved.icon, size: 56)
-            Text("No saved notes")
-                .font(.softHeadline)
-                .foregroundStyle(Theme.Palette.ink)
-            Text("Press and hold a note, then tap Save to keep it here.")
-                .font(.softCaption)
-                .foregroundStyle(Theme.Palette.inkSecondary)
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity)
+        EmptyStateView(icon: AppTab.saved.icon, title: "No saved notes",
+                       message: "Press and hold a note, then tap Save to keep it here.")
     }
 }
 

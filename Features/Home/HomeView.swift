@@ -104,6 +104,9 @@ private struct ChromeVisibility: ViewModifier {
 struct ScreenHeader: View {
     let title: String
     var showsDate: Bool = true
+    /// Accessibility identifier of the search button (screens that can be
+    /// mounted together — Home under All Notes — use different ones).
+    var searchID: String = "searchButton"
     var onSearch: () -> Void
 
     private static let dateFormatter: DateFormatter = {
@@ -139,6 +142,7 @@ struct ScreenHeader: View {
             }
             .buttonStyle(.pressable(scale: 0.9))
             .accessibilityLabel("Search notes")
+            .accessibilityIdentifier(searchID)
         }
     }
 }

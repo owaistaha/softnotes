@@ -1201,6 +1201,34 @@ final class SoftNotesUITests: XCTestCase {
         closeSearch()
     }
 
+    /// 60 fps recording of the Step 9 opens: See all (open / detail from a row / close),
+    /// Search (open with keyboard / detail from a result / close):
+    /// `VIDEO=1 scripts/ui-shots.sh testStep9MotionForVideo`.
+    func testStep9MotionForVideo() {
+        Thread.sleep(forTimeInterval: 1.0)
+        // See all
+        openAllNotes()
+        Thread.sleep(forTimeInterval: 0.8)
+        rowButton("Book club picks").tap()
+        XCTAssertTrue(app.buttons["detailBack"].waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 1.2)
+        closeDetail()
+        Thread.sleep(forTimeInterval: 0.8)
+        closeAllNotes()
+        Thread.sleep(forTimeInterval: 1.0)
+        // Search
+        openSearch()
+        search("cher")
+        Thread.sleep(forTimeInterval: 0.6)
+        rowButton("Buy fresh cherries").tap()
+        XCTAssertTrue(app.buttons["detailBack"].waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 1.2)
+        closeDetail()
+        Thread.sleep(forTimeInterval: 0.8)
+        closeSearch()
+        Thread.sleep(forTimeInterval: 1.0)
+    }
+
     // MARK: - Save helpers (identifier queries — cheaper than label predicates)
 
     private var saveInFlight: XCUIElement { app.descendants(matching: .any)["saveInFlight"] }

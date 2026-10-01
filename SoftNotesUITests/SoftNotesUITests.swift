@@ -1017,6 +1017,171 @@ final class SoftNotesUITests: XCTestCase {
         closeAllNotes()
     }
 
+    // MARK: Search
+
+    private var searchField: XCUIElement { app.descendants(matching: .any)["searchField"] }
+
+    /// Opens search with the button of the screen that is showing; waits for the keyboard.
+    private func openSearch(button id: String = "searchButton") {
+        let button = app.buttons[id]
+        XCTAssertTrue(button.waitForExistence(timeout: 5), "search button \(id)")
+        button.tap()
+        XCTAssertTrue(searchField.waitForExistence(timeout: 5), "search should open")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), "the keyboard is up on open")
+        Thread.sleep(forTimeInterval: 0.6)
+    }
+
+    private func closeSearch() {
+        app.buttons["searchClose"].tap()
+        let gone = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: searchField)
+        wait(for: [gone], timeout: 5)
+        Thread.sleep(forTimeInterval: 0.5)
+    }
+
+    private func search(_ text: String) {
+        app.buttons["searchClear"].tapIfExists()
+        searchField.typeText(text)
+        Thread.sleep(forTimeInterval: 0.5)
+    }
+
+    private var searchHeading: String { app.staticTexts["searchHeading"].label }
+
+    func testSearchEmptyQueryShowsTheLastFewNotes() {
+        openSearch()
+        snap("110_search_open")
+        XCTAssertEqual(searchHeading, "Recent")
+        for title in ["Buy fresh cherries", "Launch day checklist", "Book club picks", "Water the monstera", "Gift ideas for Mum"] {
+            XCTAssertTrue(rowButton(title).exists, "\(title) is among the last five")
+        }
+        XCTAssertFalse(rowButton("Morning pages").exists, "only the last five are shown")
+        closeSearch()
+        XCTAssertTrue(app.otherElements["folder"].exists, "closing returns to Home")
+    }
+
+    func testSearchFindsByTextByTagAndShowsNoResults() {
+        openSearch()
+        search("CHERRIES")                                  // case-insensitive
+        XCTAssertEqual(searchHeading, "1 result")
+        XCTAssertTrue(rowButton("Buy fresh cherries").exists)
+        XCTAssertFalse(rowButton("Launch day checklist").exists)
+        snap("111_search_text")
+
+        search("monstéra")                                  // diacritic-insensitive
+        XCTAssertTrue(rowButton("Water the monstera").waitForExistence(timeout: 3))
+
+        search("#errands")                                  // by tag
+        XCTAssertTrue(rowButton("Buy fresh cherries").waitForExistence(timeout: 3))
+        XCTAssertTrue(rowButton("Buy fresh cherries").label.contains("tagged Errands"), rowButton("Buy fresh cherries").label)
+        snap("112_search_tag")
+
+        search("work")                                      // "Work" tag on the launch checklist
+        XCTAssertTrue(rowButton("Launch day checklist").waitForExistence(timeout: 3))
+
+        search("zzzz")
+        XCTAssertTrue(app.descendants(matching: .any)["searchEmpty"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["No notes match “zzzz”"].exists)
+        snap("113_search_no_results")
+
+        app.buttons["searchClear"].tap()                    // clear → the last few again
+        XCTAssertTrue(app.staticTexts["searchHeading"].waitForExistence(timeout: 3))
+        XCTAssertEqual(searchHeading, "Recent")
+        closeSearch()
+    }
+
+    /// From Saved only saved notes are searched.
+    func testSearchFromSavedOnlySearchesSavedNotes() {
+        openSavedTab()
+        openSearch()
+        XCTAssertEqual(searchField.label, "Search saved notes")
+        search("launch")                                    // saved (seeded)
+        XCTAssertTrue(rowButton("Launch day checklist").waitForExistence(timeout: 3))
+        search("cherries")                                  // NOT saved
+        XCTAssertTrue(app.descendants(matching: .any)["searchEmpty"].waitForExistence(timeout: 3))
+        XCTAssertFalse(rowButton("Buy fresh cherries").exists)
+        search("mum")                                       // saved (seeded)
+        XCTAssertTrue(rowButton("Gift ideas for Mum").waitForExistence(timeout: 3))
+        snap("114_search_saved")
+        closeSearch()
+        XCTAssertTrue(app.staticTexts["Saved"].exists, "closing returns to Saved")
+    }
+
+    /// Search → open a result → edit → close (back in search) → relaunch: the edit persisted.
+    func testSearchOpenResultEditRelaunch() {
+        launchOnDisk(["-resetStore"])
+        openSearch()
+        search("monstera")
+        rowButton("Water the monstera").tap()
+        XCTAssertTrue(app.buttons["detailBack"].waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 1.0)
+        XCTAssertEqual(detailText.value as? String, "Water the monstera")
+        replaceDetailText(with: "Water the ferns")
+        closeDetail()
+        XCTAssertTrue(searchField.exists, "closing the detail returns to the search")
+        XCTAssertTrue(app.descendants(matching: .any)["searchEmpty"].waitForExistence(timeout: 3),
+                      "the edited note no longer matches 'monstera'")
+        search("ferns")
+        XCTAssertTrue(rowButton("Water the ferns").waitForExistence(timeout: 3))
+        closeSearch()
+        Thread.sleep(forTimeInterval: 1.0)
+        app.terminate()
+        launchOnDisk()
+        openSearch()
+        search("ferns")
+        XCTAssertTrue(rowButton("Water the ferns").waitForExistence(timeout: 3), "edit survives a relaunch")
+    }
+
+    /// All Notes → search → close returns to All Notes; a result opens the detail.
+    func testSearchFromAllNotesReturnsThere() {
+        openAllNotes()
+        openSearch(button: "allSearchButton")
+        search("book")
+        XCTAssertTrue(rowButton("Book club picks").waitForExistence(timeout: 3))
+        closeSearch()
+        XCTAssertTrue(app.buttons["allBack"].exists, "back on All Notes")
+        closeAllNotes()
+    }
+
+    func testSearchReduceMotionFlow() {
+        relaunch(["-reduceMotion"])
+        XCTAssertTrue(app.buttons["primaryAction"].waitForExistence(timeout: 10))
+        Thread.sleep(forTimeInterval: 1.0)
+        openSearch()
+        search("cherries")
+        rowButton("Buy fresh cherries").tap()
+        XCTAssertTrue(app.buttons["detailBack"].waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 1.0)
+        closeDetail()
+        XCTAssertTrue(searchField.exists)
+        closeSearch()
+        snap("115_search_reduce_motion_closed")
+    }
+
+    /// VoiceOver: labelled field, clear button, close button, a result count.
+    func testSearchAccessibility() {
+        openSearch()
+        XCTAssertEqual(searchField.label, "Search notes")
+        search("cher")
+        XCTAssertEqual(app.buttons["searchClear"].label, "Clear search")
+        XCTAssertEqual(app.buttons["searchClose"].label, "Close search")
+        XCTAssertEqual(searchHeading, "1 result")
+        XCTAssertTrue(app.staticTexts["searchHeading"].exists)
+        // (The "N notes found" announcement and the field hint can't be read from XCUITest: code-verified.)
+    }
+
+    /// Keyboard stress for `scripts/stall-stress.sh`: open / dismiss / re-focus / type, repeatedly.
+    func testSearchKeyboardCycles() {
+        openSearch()
+        for i in 0..<8 {
+            search(i % 2 == 0 ? "cher" : "boo")
+            searchField.typeText("\n")                      // Search key → keyboard down
+            XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+            searchField.tap()                               // back up
+            XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+            Thread.sleep(forTimeInterval: 0.4)
+        }
+        closeSearch()
+    }
+
     // MARK: - Save helpers (identifier queries — cheaper than label predicates)
 
     private var saveInFlight: XCUIElement { app.descendants(matching: .any)["saveInFlight"] }
@@ -1040,4 +1205,8 @@ final class SoftNotesUITests: XCTestCase {
         XCTAssertTrue(app.buttons["recentRow_0"].label.contains("Have a good day"),
                       "new note should top Recent (got \(app.buttons["recentRow_0"].label))")
     }
+}
+
+private extension XCUIElement {
+    func tapIfExists() { if exists { tap() } }
 }

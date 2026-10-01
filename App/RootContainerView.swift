@@ -55,6 +55,8 @@ struct RootContainerView: View {
     @State private var detail: DetailSession?
     /// Step 9: "See all" (All Notes) — an in-place overlay, like compose and the detail.
     @State private var showsAllNotes = false
+    /// Step 9: the search overlay (nil = closed). Above Home, Saved and All Notes.
+    @State private var search: SearchModel?
 
     /// One open note: what was tapped, where, and its edit buffer.
     private struct DetailSession {
@@ -65,7 +67,7 @@ struct RootContainerView: View {
     }
 
     /// Which list the open note came from (closing flies back to its row there).
-    private enum DetailSource { case home, saved, all }
+    private enum DetailSource { case home, saved, all, search }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
@@ -150,13 +152,26 @@ struct RootContainerView: View {
             if showsAllNotes {
                 AllNotesView(
                     onBack: closeAllNotes,
-                    onSearch: {},
+                    onSearch: { openSearch(.all) },
                     onSelectNote: { openDetail($0, from: $1, source: .all) }
+                )
+                .transition(overlayTransition)
+                .accessibilityHidden(detail != nil || search != nil)
+                .allowsHitTesting(detail == nil && search == nil)
+                .zIndex(1.2)
+            }
+
+            // Step 9: Search (above All Notes, below the note detail).
+            if let search {
+                SearchView(
+                    model: search,
+                    onClose: closeSearch,
+                    onSelectNote: { openDetail($0, from: $1, source: .search) }
                 )
                 .transition(overlayTransition)
                 .accessibilityHidden(detail != nil)
                 .allowsHitTesting(detail == nil)
-                .zIndex(1.2)
+                .zIndex(1.4)
             }
 
             // Step 8: the open note — an in-place overlay (not a sheet) that grows
@@ -258,12 +273,13 @@ struct RootContainerView: View {
                     // during the push, the leaving right chip showed as Home rose.
                     vacatesCentreChip: foldPhase >= .folded && foldPhase < .landed,
                     countLead: countLead,
+                    onSearch: { openSearch(.all) },
                     onSeeAll: openAllNotes,
                     onSelectNote: { openDetail($0, from: $1, source: .home) }
                 )
                 .transition(.blurFade)
             case .saved:
-                SavedView(onSelectNote: { openDetail($0, from: $1, source: .saved) })
+                SavedView(onSearch: { openSearch(.saved) }, onSelectNote: { openDetail($0, from: $1, source: .saved) })
                     .transition(.blurFade)
             }
         }
@@ -356,12 +372,16 @@ struct RootContainerView: View {
         case .home:  store.recent.contains { $0.id == session.id }
         case .saved: store.saved.contains { $0.id == session.id }
         case .all:   store.note(withID: session.id) != nil
+        case .search:
+            search.map { model in
+                NoteSearch.results(in: model.scope.notes(in: store), query: model.query).contains { $0.id == session.id }
+            } ?? false
         }
     }
 
     // MARK: - All Notes / overlays (Step 9)
 
-    private var overlaysOpen: Bool { detail != nil || showsAllNotes }
+    private var overlaysOpen: Bool { detail != nil || showsAllNotes || search != nil }
 
     /// Overlay in/out: blur-fade (Reduce Motion: plain fade).
     private var overlayTransition: AnyTransition {
@@ -375,6 +395,15 @@ struct RootContainerView: View {
     private func openAllNotes() {
         guard foldPhase == .idle, !isComposing, !overlaysOpen else { return }
         withAnimation(overlayAnimation) { showsAllNotes = true }
+    }
+
+    private func openSearch(_ scope: SearchScope) {
+        guard foldPhase == .idle, !isComposing, detail == nil, search == nil else { return }
+        withAnimation(overlayAnimation) { search = SearchModel(scope: scope) }
+    }
+
+    private func closeSearch() {
+        withAnimation(overlayAnimation) { search = nil }
     }
 
     private func closeAllNotes() {

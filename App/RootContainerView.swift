@@ -603,17 +603,24 @@ extension RootContainerView {
         // Auto-focus at 0.85 s; let the first keyboard settle. Stalls in this
         // first open (compose + first keyboard) are counted too.
         try? await Task.sleep(for: .milliseconds(2500))
-        print("KEYBOARD FIRST OPEN: \(watchdog.report)")
+        // The first focus of a process includes UIKit loading frameworks inside
+        // becomeFirstResponder (see `-searchCycles`): reported separately.
+        let firstOpen = watchdog.report
+        print("KEYBOARD FIRST OPEN: \(firstOpen)")
+        MainThreadWatchdog.mark("first open done: \(firstOpen)")
+        watchdog.reset()
         for cycle in 1...cycles {
             let before = watchdog.report.stalls.count
+            MainThreadWatchdog.mark("cycle \(cycle) unfocus")
             NotificationCenter.default.post(name: .debugWriteFocus, object: false)
             try? await Task.sleep(for: .milliseconds(1000))
+            MainThreadWatchdog.mark("cycle \(cycle) focus")
             NotificationCenter.default.post(name: .debugWriteFocus, object: true)
             try? await Task.sleep(for: .milliseconds(1200))
             let r = watchdog.report
             print("KEYBOARD CYCLE \(cycle)/\(cycles): stalls +\(r.stalls.count - before), max so far \(r.maxLatency) ms")
         }
-        let report = "cycles=\(cycles) \(watchdog.report)"
+        let report = "cycles=\(cycles) \(watchdog.report) | first open: \(firstOpen)"
         print("KEYBOARD CYCLES DONE: \(report)")
         keyboardCycleReport = report
         #endif

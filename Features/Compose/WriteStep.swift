@@ -73,6 +73,9 @@ struct WriteStep: View {
         .task {
             withAnimation(Theme.Motion.smooth) { hasEntered = true }
             try? await Task.sleep(for: Self.autoFocusDelay)
+            #if DEBUG
+            MainThreadWatchdog.mark("write auto-focus requested")
+            #endif
             if !Task.isCancelled { isFocused = true }
         }
         .onDisappear { draft.isEditingText = false }

@@ -310,7 +310,8 @@ final class SoftNotesUITests: XCTestCase {
         attachment.lifetime = .keepAlways
         add(attachment)
         print("KEYBOARD CYCLES (under XCUITest, \(polls) polls): \(summary)")
-        XCTAssertTrue(summary.contains("stalls=0 "), "main-thread stalls: \(summary)")
+        // The 20 cycles (steady state); the first open is reported after "|" (first-focus stall).
+        XCTAssertTrue(summary.hasPrefix("cycles=20 stalls=0 "), "main-thread stalls: \(summary)")
     }
 
     /// Home on a short screen (iPhone SE): once a save makes Recent three

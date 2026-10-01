@@ -151,9 +151,10 @@ struct NoteCardContent<TextArea: View>: View {
 
         if let onIconTap {
             Button(action: onIconTap) {
+                // No hit-area margin: the text field's accessibility frame (a
+                // rotated card's bounding box) reaches up to the icon, and any
+                // margin made the text field's activation open the picker.
                 glyph
-                    // A bigger hit area than the 32pt icon, without moving it.
-                    .padding(8).contentShape(Rectangle()).padding(-8)
             }
             .buttonStyle(.pressable(scale: 0.92))
             .accessibilityLabel("Icon: \(icon.accessibilityName)")

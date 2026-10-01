@@ -5,7 +5,7 @@ import SwiftUI
 struct SavedView: View {
     @Environment(NotesStore.self) private var store
     var onSearch: () -> Void = {}
-    var onSelectNote: (Note) -> Void = { _ in }
+    var onSelectNote: (Note, CGRect) -> Void = { _, _ in }
 
     var body: some View {
         ScrollView {
@@ -21,7 +21,7 @@ struct SavedView: View {
                 } else {
                     VStack(spacing: Theme.Metrics.rowSpacing) {
                         ForEach(store.saved) { note in
-                            NoteRow(note: note) { onSelectNote(note) }
+                            NoteRow(note: note) { frame in onSelectNote(note, frame) }
                                 .transition(.blurSlide)
                         }
                     }

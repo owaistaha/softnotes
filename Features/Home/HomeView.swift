@@ -33,7 +33,7 @@ struct HomeView: View {
     private var homeScrolls: Bool { contentHeight > viewportHeight + 1 }
     var onSeeAll: () -> Void = {}
     var onOpenFolder: () -> Void = {}
-    var onSelectNote: (Note) -> Void = { _ in }
+    var onSelectNote: (Note, CGRect) -> Void = { _, _ in }
 
     var body: some View {
         ScrollView {

@@ -5,7 +5,7 @@ struct RecentNotesSection: View {
     /// False only when the store is completely empty (different copy).
     var hasAnyNotes = true
     var onSeeAll: () -> Void
-    var onSelect: (Note) -> Void
+    var onSelect: (Note, CGRect) -> Void = { _, _ in }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -33,7 +33,7 @@ struct RecentNotesSection: View {
             } else {
                 VStack(spacing: Theme.Metrics.rowSpacing) {
                     ForEach(Array(notes.enumerated()), id: \.element.id) { index, note in
-                        NoteRow(note: note) { onSelect(note) }
+                        NoteRow(note: note) { frame in onSelect(note, frame) }
                             // New notes arrive from the top with a soft focus-pull
                             .transition(.blurSlide)
                             .accessibilityIdentifier("recentRow_\(index)")
@@ -49,14 +49,20 @@ struct RecentNotesSection: View {
 struct NoteRow: View {
     @Environment(NotesStore.self) private var store
     let note: Note
-    var action: () -> Void
+    /// Called with the row's global frame (the detail overlay grows from it).
+    var action: (CGRect) -> Void
+    @Environment(\.detailSourceNoteID) private var detailSourceNoteID
+    @State private var frame: CGRect = .zero
 
     private let shape = RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous)
 
     var body: some View {
-        Button(action: action) {
+        Button { action(frame) } label: {
             HStack(spacing: 14) {
                 StackedIconView(icon: note.icon, size: 40, shapeOverride: .squircle)
+                    // While this note is open, the overlay's flying icon stands in for it.
+                    .opacity(detailSourceNoteID == note.id ? 0 : 1)
+                    .transaction { $0.animation = nil }
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(note.title)
@@ -85,6 +91,10 @@ struct NoteRow: View {
             .contentShape(shape)
         }
         .buttonStyle(.pressable(scale: 0.98))
+        .onGeometryChange(for: CGRect.self) { proxy in
+            let f = proxy.frame(in: .global)
+            return CGRect(x: f.minX.rounded(), y: f.minY.rounded(), width: f.width.rounded(), height: f.height.rounded())
+        } action: { if $0 != frame { frame = $0 } }
         .contentShape(.contextMenuPreview, shape)
         .contextMenu {
             Button(note.isSaved ? "Remove from Saved" : "Save",

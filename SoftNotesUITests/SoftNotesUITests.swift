@@ -669,6 +669,239 @@ final class SoftNotesUITests: XCTestCase {
         snap("85_first_note_into_empty_store")
     }
 
+    // MARK: - Step 8 (note detail / edit)
+
+    private var detailText: XCUIElement { app.descendants(matching: .any)["detailText"] }
+
+    /// Taps a Recent row and waits for the overlay to settle (controls respond).
+    private func openDetail(row index: Int = 0) {
+        let row = app.buttons["recentRow_\(index)"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+        XCTAssertTrue(app.buttons["detailBack"].waitForExistence(timeout: 5), "detail should open")
+        XCTAssertTrue(detailText.waitForExistence(timeout: 3))
+        Thread.sleep(forTimeInterval: 1.0)                   // the grow takes ≈0.6 s
+    }
+
+    private func closeDetail() {
+        app.buttons["detailBack"].tap()
+        let gone = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.buttons["detailBack"])
+        wait(for: [gone], timeout: 5)
+        Thread.sleep(forTimeInterval: 0.4)
+    }
+
+    /// Focus the text, delete what is there, type `text`, press Return.
+    private func replaceDetailText(with text: String) {
+        detailText.tap()
+        Thread.sleep(forTimeInterval: 1.0)
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 0.7)
+        detailText.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 60))
+        if !text.isEmpty { detailText.typeText(text) }
+        detailText.typeText("\n")
+        Thread.sleep(forTimeInterval: 0.7)
+    }
+
+    func testDetailOpensShowsTheNoteAndCloses() {
+        openDetail()
+        XCTAssertEqual(detailText.value as? String, "Buy fresh cherries")
+        XCTAssertEqual(app.buttons["cardIcon"].label, "Icon: Basket")
+        XCTAssertEqual(app.buttons["tagChip"].label, "Tag: Errands")
+        XCTAssertTrue(app.staticTexts["Note"].exists)
+        snap("90_detail_open")
+        closeDetail()
+        XCTAssertEqual(app.otherElements["folder"].label, "Notes folder, 8 notes")
+        XCTAssertTrue(app.buttons["recentRow_0"].label.hasPrefix("Buy fresh cherries, "))
+        snap("91_detail_closed")
+    }
+
+    /// Open → edit text → close → kill → relaunch shows the change.
+    func testDetailEditTextSurvivesRelaunch() {
+        launchOnDisk(["-resetStore"])
+        openDetail()
+        replaceDetailText(with: "Water the plants")
+        snap("92_detail_edited")
+        closeDetail()
+        XCTAssertTrue(app.buttons["recentRow_0"].label.hasPrefix("Water the plants, "), app.buttons["recentRow_0"].label)
+        Thread.sleep(forTimeInterval: 1.0)
+        app.terminate()
+        launchOnDisk()
+        XCTAssertTrue(app.buttons["recentRow_0"].label.hasPrefix("Water the plants, "), "edit must survive a relaunch")
+        XCTAssertEqual(app.otherElements["folder"].label, "Notes folder, 8 notes", "editing never adds or removes notes")
+    }
+
+    /// Leaving the text empty discards the edit; the note is NOT deleted.
+    func testDetailEmptyTextRestoresTheOldText() {
+        openDetail()
+        replaceDetailText(with: "")
+        XCTAssertEqual(detailText.value as? String, "Buy fresh cherries", "the old text comes back")
+        closeDetail()
+        XCTAssertTrue(app.buttons["recentRow_0"].label.hasPrefix("Buy fresh cherries, "))
+        XCTAssertEqual(app.otherElements["folder"].label, "Notes folder, 8 notes")
+    }
+
+    func testDetailTextCapIs48() {
+        openDetail()
+        replaceDetailText(with: String(repeating: "ab ", count: 30))
+        XCTAssertLessThanOrEqual((detailText.value as? String ?? "").count, 48)
+    }
+
+    func testDetailChangeIconSurvivesRelaunch() {
+        launchOnDisk(["-resetStore"])
+        openDetail()
+        app.buttons["cardIcon"].tap()
+        XCTAssertTrue(app.buttons["iconCell_5"].waitForExistence(timeout: 5), "picker grid should open")
+        Thread.sleep(forTimeInterval: 0.6)
+        snap("93_detail_picker")
+        app.buttons["iconCell_5"].tap()
+        Thread.sleep(forTimeInterval: 0.6)
+        app.buttons["detailBack"].tap()                      // back to the card
+        XCTAssertTrue(app.buttons["cardIcon"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.buttons["cardIcon"].label, "Icon: Cup and saucer")
+        closeDetail()
+        Thread.sleep(forTimeInterval: 1.0)
+        app.terminate()
+        launchOnDisk()
+        openDetail()
+        XCTAssertEqual(app.buttons["cardIcon"].label, "Icon: Cup and saucer", "icon change must survive a relaunch")
+    }
+
+    func testDetailTagChipCyclesAndPersists() {
+        launchOnDisk(["-resetStore"])
+        openDetail()
+        XCTAssertEqual(app.buttons["tagChip"].label, "Tag: Errands")
+        app.buttons["tagChip"].tap()
+        XCTAssertEqual(app.buttons["tagChip"].label, "Tag: Ideas")
+        closeDetail()
+        Thread.sleep(forTimeInterval: 1.0)
+        app.terminate()
+        launchOnDisk()
+        openDetail()
+        XCTAssertEqual(app.buttons["tagChip"].label, "Tag: Ideas")
+    }
+
+    /// Heart toggles Saved (a switch for VoiceOver); persists; the note shows on the Saved tab.
+    func testDetailToggleSaved() {
+        launchOnDisk(["-resetStore"])
+        openDetail()
+        let heart = app.switches["detailSave"]
+        XCTAssertTrue(heart.waitForExistence(timeout: 3), "the heart reads as a switch")
+        XCTAssertEqual(heart.value as? String, "Off")
+        heart.tap()
+        Thread.sleep(forTimeInterval: 0.5)
+        XCTAssertEqual(heart.value as? String, "On")
+        closeDetail()
+        openSavedTab()
+        XCTAssertTrue(rowButton("Buy fresh cherries").waitForExistence(timeout: 3))
+        Thread.sleep(forTimeInterval: 1.0)
+        app.terminate()
+        launchOnDisk()
+        openSavedTab()
+        XCTAssertTrue(rowButton("Buy fresh cherries").waitForExistence(timeout: 3), "still saved")
+        // Open it from Saved and unsave: the row leaves the list, the overlay cross-fades closed.
+        rowButton("Buy fresh cherries").tap()
+        XCTAssertTrue(app.buttons["detailBack"].waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 1.0)
+        app.switches["detailSave"].tap()
+        Thread.sleep(forTimeInterval: 0.5)
+        closeDetail()
+        XCTAssertFalse(rowButton("Buy fresh cherries").exists, "unsaved notes leave Saved")
+    }
+
+    func testDetailDeleteWithConfirmation() {
+        launchOnDisk(["-resetStore"])
+        openDetail()
+        app.buttons["detailDelete"].tap()
+        let confirm = app.buttons["Delete note"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 3), "a confirmation should appear")
+        snap("94_detail_delete_confirm")
+        confirm.tap()
+        let gone = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.buttons["detailBack"])
+        wait(for: [gone], timeout: 6)
+        Thread.sleep(forTimeInterval: 0.8)
+        XCTAssertFalse(rowButton("Buy fresh cherries").exists)
+        XCTAssertEqual(app.otherElements["folder"].label, "Notes folder, 7 notes")
+        Thread.sleep(forTimeInterval: 1.0)
+        app.terminate()
+        launchOnDisk()
+        XCTAssertEqual(app.otherElements["folder"].label, "Notes folder, 7 notes", "deleted for good")
+    }
+
+    func testDetailCancelDeleteKeepsTheNote() {
+        openDetail()
+        app.buttons["detailDelete"].tap()
+        XCTAssertTrue(app.buttons["Delete note"].waitForExistence(timeout: 3))
+        // iOS 17 shows a Cancel button; iOS 26 presents the dialog as a popover
+        // that is dismissed by tapping outside it.
+        if app.buttons["Cancel"].exists {
+            app.buttons["Cancel"].tap()
+        } else {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.92)).tap()
+        }
+        Thread.sleep(forTimeInterval: 0.6)
+        XCTAssertTrue(app.buttons["detailBack"].exists, "still in the detail")
+        XCTAssertEqual(detailText.value as? String, "Buy fresh cherries")
+        closeDetail()
+        XCTAssertEqual(app.otherElements["folder"].label, "Notes folder, 8 notes")
+        XCTAssertTrue(app.buttons["recentRow_0"].label.hasPrefix("Buy fresh cherries, "))
+    }
+
+    /// Reduce Motion: the same flow with a cross-fade (no flight).
+    func testDetailReduceMotionFlow() {
+        relaunch(["-reduceMotion"])
+        XCTAssertTrue(app.buttons["primaryAction"].waitForExistence(timeout: 10))
+        Thread.sleep(forTimeInterval: 1.0)
+        openDetail()
+        snap("95_detail_reduce_motion")
+        replaceDetailText(with: "Fade test")
+        app.buttons["tagChip"].tap()
+        closeDetail()
+        XCTAssertTrue(app.buttons["recentRow_0"].label.hasPrefix("Fade test, "))
+        openDetail()
+        app.buttons["detailDelete"].tap()
+        XCTAssertTrue(app.buttons["Delete note"].waitForExistence(timeout: 3))
+        app.buttons["Delete note"].tap()
+        let gone = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.buttons["detailBack"])
+        wait(for: [gone], timeout: 6)
+        Thread.sleep(forTimeInterval: 0.8)
+        XCTAssertEqual(app.otherElements["folder"].label, "Notes folder, 7 notes")
+    }
+
+    /// VoiceOver: labelled field, heart = switch, destructive delete hint, title element.
+    func testDetailAccessibility() {
+        openDetail()
+        XCTAssertEqual(detailText.label, "Note text")
+        XCTAssertEqual(app.switches["detailSave"].label, "Saved")
+        XCTAssertTrue(app.buttons["detailDelete"].exists)
+        // (XCUITest can't read accessibility hints: the delete / save / text-field hints are code-verified.)
+        XCTAssertEqual(app.buttons["detailBack"].label, "Back")
+        XCTAssertEqual(app.buttons["cardIcon"].label, "Icon: Basket")
+        snap("96_detail_a11y")
+    }
+
+    /// 60 fps recording of open / close (+ editing and the picker):
+    /// `VIDEO=1 scripts/ui-shots.sh testDetailMotionForVideo`.
+    func testDetailMotionForVideo() {
+        Thread.sleep(forTimeInterval: 1.0)
+        for _ in 0..<2 {
+            openDetail()
+            Thread.sleep(forTimeInterval: 0.8)
+            closeDetail()
+            Thread.sleep(forTimeInterval: 0.8)
+        }
+        openDetail()
+        detailText.tap()
+        Thread.sleep(forTimeInterval: 1.4)
+        detailText.typeText("\n")
+        Thread.sleep(forTimeInterval: 0.8)
+        app.buttons["cardIcon"].tap()
+        Thread.sleep(forTimeInterval: 1.0)
+        app.buttons["detailBack"].tap()
+        Thread.sleep(forTimeInterval: 0.8)
+        closeDetail()
+        Thread.sleep(forTimeInterval: 0.8)
+    }
+
     // MARK: - Save helpers (identifier queries — cheaper than label predicates)
 
     private var saveInFlight: XCUIElement { app.descendants(matching: .any)["saveInFlight"] }

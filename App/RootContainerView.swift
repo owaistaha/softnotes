@@ -51,6 +51,16 @@ struct RootContainerView: View {
     @State private var saveTask: Task<Void, Never>?
     /// DEBUG `-keyboardCycles`: the watchdog's summary once the cycles finish.
     @State private var keyboardCycleReport: String?
+    /// Step 8: the open note (nil = none). The overlay owns its own animation.
+    @State private var detail: DetailSession?
+
+    /// One open note: what was tapped, where, and its edit buffer.
+    private struct DetailSession {
+        let id: Note.ID
+        let sourceFrame: CGRect
+        let tab: AppTab
+        let draft: ComposeDraft
+    }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
@@ -98,7 +108,8 @@ struct RootContainerView: View {
                 .offset(homeTransform.offset)
                 .blur(radius: isComposing && !reduceMotion ? 14 : 0)
                 .opacity(isComposing ? 0 : 1)
-                .allowsHitTesting(!isComposing && foldPhase == .idle)
+                .allowsHitTesting(!isComposing && foldPhase == .idle && detail == nil)
+                .environment(\.detailSourceNoteID, detail?.id)
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     FloatingTabBar(
                         selection: $selectedTab,
@@ -114,7 +125,7 @@ struct RootContainerView: View {
                     .blur(radius: chromeHidden ? 8 : 0)
                     .offset(y: chromeHidden ? 24 : 0)
                     .animation(Theme.Motion.chromeIn, value: chromeHidden)
-                    .allowsHitTesting(foldPhase == .idle)
+                    .allowsHitTesting(foldPhase == .idle && detail == nil)
                 }
 
             // Always in the hierarchy; it shows/hides its own contents so the
@@ -129,6 +140,21 @@ struct RootContainerView: View {
                 onSave: save
             )
             .zIndex(1)
+
+            // Step 8: the open note — an in-place overlay (not a sheet) that grows
+            // from the tapped row. Fresh state per note (`.id`).
+            if let detail {
+                NoteDetailView(
+                    noteID: detail.id,
+                    draft: detail.draft,
+                    sourceFrame: detail.sourceFrame,
+                    flies: !reduceMotion && detail.sourceFrame != .zero,
+                    returnsToRow: { detailRowIsListed(detail) },
+                    onClose: { self.detail = nil }
+                )
+                .id(detail.id)
+                .zIndex(1)
+            }
 
             // Always mounted: it animates its own progress values (see FoldStage).
             FoldStage(card: foldCard, phase: foldPhase, landing: landing)
@@ -147,7 +173,7 @@ struct RootContainerView: View {
         }
         .environment(store)
         // The write step hides the status bar while typing (reference).
-        .statusBarHidden(isComposing && draft.isEditingText)
+        .statusBarHidden((isComposing && draft.isEditingText) || (detail?.draft.isEditingText ?? false))
         .onPreferenceChange(FolderFrameKey.self) { frame in
             if canMeasureHome && frame != folderFrame { folderFrame = frame }
         }
@@ -212,11 +238,12 @@ struct RootContainerView: View {
                     // during the push, the leaving right chip showed as Home rose.
                     vacatesCentreChip: foldPhase >= .folded && foldPhase < .landed,
                     countLead: countLead,
-                    onSeeAll: { withAnimation(Theme.Motion.snappy) { selectedTab = .saved } }
+                    onSeeAll: { withAnimation(Theme.Motion.snappy) { selectedTab = .saved } },
+                    onSelectNote: openDetail
                 )
                 .transition(.blurFade)
             case .saved:
-                SavedView()
+                SavedView(onSelectNote: openDetail)
                     .transition(.blurFade)
             }
         }
@@ -292,6 +319,23 @@ struct RootContainerView: View {
         guard foldPhase == .idle else { return }
         draft = ComposeDraft()
         withAnimation(Theme.Motion.smooth) { isComposing = true }
+    }
+
+    // MARK: - Note detail (Step 8)
+
+    private func openDetail(_ note: Note, from rowFrame: CGRect) {
+        guard foldPhase == .idle, !isComposing, detail == nil, let current = store.note(withID: note.id) else { return }
+        detail = DetailSession(id: current.id, sourceFrame: rowFrame, tab: selectedTab,
+                               draft: ComposeDraft(editing: current))
+    }
+
+    /// Closing flies back to the row only if the list the note was opened
+    /// from still shows it (an unsaved note leaves the Saved tab).
+    private func detailRowIsListed(_ session: DetailSession) -> Bool {
+        switch session.tab {
+        case .home:  store.recent.contains { $0.id == session.id }
+        case .saved: store.saved.contains { $0.id == session.id }
+        }
     }
 
     private func cancelComposing() {

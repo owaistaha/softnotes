@@ -272,4 +272,41 @@ final class NotePersistenceTests: XCTestCase {
         let p = InMemoryNotePersistence(notes: notes, hasSeeded: true)
         XCTAssertEqual(store(p).notes.map(\.title), ["a", "b", "c", "d"])
     }
+
+    // MARK: update (Step 8)
+
+    func testUpdateEditsInPlaceAndPersistsOnce() async throws {
+        let p = InMemoryNotePersistence(notes: [sample("a"), sample("b", 10)], hasSeeded: true)
+        let s = store(p, debounce: .milliseconds(100))
+        let id = s.notes[1].id
+        s.update(id) { $0.title = "b1"; $0.body = "b1" }
+        s.update(id) { $0.icon = NoteIcon(symbol: "leaf", tone: .green) }
+        s.update(id) { $0.tags = ["Work"] }
+        XCTAssertEqual(s.notes[1].title, "b1")
+        XCTAssertEqual(s.notes.map(\.title), ["a", "b1"], "order is unchanged")
+        XCTAssertEqual(p.saveCount, 0)
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertEqual(p.saveCount, 1, "three quick edits, one write")
+        XCTAssertEqual(p.lastSaved?[1].icon.symbol, "leaf")
+    }
+
+    func testUnchangedOrUnknownUpdateWritesNothing() {
+        let p = InMemoryNotePersistence(notes: [sample("a")], hasSeeded: true)
+        let s = store(p)
+        s.update(s.notes[0].id) { $0.title = "a" }
+        s.update(UUID()) { $0.title = "zzz" }
+        s.flush()
+        XCTAssertEqual(p.saveCount, 0)
+    }
+
+    func testEditDraftStartsFromTheNote() {
+        let n = Note(title: "Water the monstera", icon: NoteIcon(symbol: "leaf", tone: .green),
+                     tags: ["Errands"], createdAt: Date(timeIntervalSince1970: 1_790_000_000))
+        let d = ComposeDraft(editing: n)
+        XCTAssertEqual(d.text, "Water the monstera")
+        XCTAssertEqual(d.tag, "Errands")
+        XCTAssertEqual(d.icon, n.icon)
+        XCTAssertEqual(d.createdAt, n.createdAt)
+        XCTAssertEqual(ComposeDraft(editing: Note(title: "x", icon: .defaultIcon)).tag, "Daily")
+    }
 }

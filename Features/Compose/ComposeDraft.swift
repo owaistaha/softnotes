@@ -30,12 +30,24 @@ final class ComposeDraft {
     /// wide capitals ("WWWW…") would still overflow (the field then scrolls).
     static let maxTextLength = 48
 
+    init(createdAt: Date = .now) { self.createdAt = createdAt }
+
+    /// An edit buffer for an existing note (Step 8's detail screen reuses the
+    /// draft: icon picker, tag cycling, the text cap and the keyboard flag).
+    convenience init(editing note: Note) {
+        self.init(createdAt: note.createdAt)
+        step = .write
+        icon = note.icon
+        text = note.body.isEmpty ? note.title : note.body
+        tags = note.tags.isEmpty ? [Self.tagPresets[0]] : note.tags
+    }
+
     var step: ComposeStep = .pickIcon
     var icon: NoteIcon = .defaultIcon
     var text: String = ""
     var tags: [String] = [tagPresets[0]]
     /// When the draft was started — drives the card's heading and timestamp.
-    let createdAt: Date = .now
+    let createdAt: Date
     /// True while the write step's text field has focus (keyboard up). The
     /// flow uses it to slide the nav away and hide the status bar.
     var isEditingText = false

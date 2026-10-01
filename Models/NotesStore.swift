@@ -85,6 +85,19 @@ final class NotesStore {
         scheduleSave()
     }
 
+    /// Edits one note in place (detail screen). Persisted like every other
+    /// mutation (debounced). A change that leaves the note equal writes nothing.
+    func update(_ id: Note.ID, _ change: (inout Note) -> Void) {
+        guard let index = notes.firstIndex(where: { $0.id == id }) else { return }
+        var edited = notes[index]
+        change(&edited)
+        guard edited != notes[index] else { return }
+        notes[index] = edited
+        scheduleSave()
+    }
+
+    func note(withID id: Note.ID) -> Note? { notes.first { $0.id == id } }
+
     func delete(_ id: Note.ID) {
         let before = notes.count
         notes.removeAll { $0.id == id }

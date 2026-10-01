@@ -60,6 +60,8 @@ struct NoteCardContent<TextArea: View>: View {
     var date: Date
     var tag: String
     var onTagTap: (() -> Void)? = nil
+    /// Detail screen: tapping the header icon opens the icon picker.
+    var onIconTap: (() -> Void)? = nil
     /// The fold hides the header icon (keeping its slot) while its own copy
     /// lifts off the card — one travelling view, no cross-fade.
     var showsHeaderIcon: Bool = true
@@ -128,9 +130,7 @@ struct NoteCardContent<TextArea: View>: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            StackedIconView(icon: icon, size: Self.headerIconSize, shapeOverride: .squircle,
-                            glow: Self.headerIconGlow)
-                .opacity(showsHeaderIcon ? 1 : 0)
+            headerIcon
             VStack(alignment: .leading, spacing: 1) {
                 Text(NoteCardFormat.heading(for: date))
                     .font(.softNoteHeading)
@@ -139,8 +139,29 @@ struct NoteCardContent<TextArea: View>: View {
                     .font(.softNoteMeta)
                     .foregroundStyle(Theme.Palette.inkSecondary)
             }
+            .accessibilityElement(children: .combine)
         }
-        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private var headerIcon: some View {
+        let glyph = StackedIconView(icon: icon, size: Self.headerIconSize, shapeOverride: .squircle,
+                                    glow: Self.headerIconGlow)
+            .opacity(showsHeaderIcon ? 1 : 0)
+
+        if let onIconTap {
+            Button(action: onIconTap) {
+                glyph
+                    // A bigger hit area than the 32pt icon, without moving it.
+                    .padding(8).contentShape(Rectangle()).padding(-8)
+            }
+            .buttonStyle(.pressable(scale: 0.92))
+            .accessibilityLabel("Icon: \(icon.accessibilityName)")
+            .accessibilityHint("Opens the icon picker")
+            .accessibilityIdentifier("cardIcon")
+        } else {
+            glyph
+        }
     }
 
     @ViewBuilder

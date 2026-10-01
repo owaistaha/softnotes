@@ -67,8 +67,7 @@ struct NoteCardContent<TextArea: View>: View {
     /// lifts off the card — one travelling view, no cross-fade.
     var showsHeaderIcon: Bool = true
     @ViewBuilder var textArea: TextArea
-    /// The tag chip grows with its text (20pt at the default size).
-    @ScaledMetric(relativeTo: .caption2) private var tagHeight: CGFloat = 20
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     // Geometry measured from the reference (points, 393pt phone).
     static var size: CGSize { CGSize(width: 236, height: 258) }
@@ -92,17 +91,21 @@ struct NoteCardContent<TextArea: View>: View {
         CGPoint(x: headerLeading + headerIconSize / 2, y: headerTop + headerIconSize / 2)
     }
 
+    private var showsRules: Bool { dynamicTypeSize <= .large }
+
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
 
         ZStack(alignment: .topLeading) {
             SoftSurface(shape, fill: Theme.Palette.paper, elevation: .raised)
 
-            // Ruled lines + dashed divider
-            Canvas { context, size in
+            // Ruled lines + dashed divider. The rules sit on the 24pt text's lines;
+            // once the note text is larger (Dynamic Type) they'd cut through it,
+            // so they are only drawn at the default size or smaller.
+            Canvas { [showsRules] context, size in
                 var rules = Path()
                 let fullWidth = size.width - Self.inset * 2
-                for (index, y) in Self.ruleYs.enumerated() {
+                for (index, y) in (showsRules ? Self.ruleYs : []).enumerated() {
                     let width = index == Self.ruleYs.count - 1 ? fullWidth * 0.45 : fullWidth
                     rules.move(to: CGPoint(x: Self.inset, y: y))
                     rules.addLine(to: CGPoint(x: Self.inset + width, y: y))
@@ -162,16 +165,11 @@ struct NoteCardContent<TextArea: View>: View {
             .opacity(showsHeaderIcon ? 1 : 0)
 
         if let onIconTap {
-            Button(action: onIconTap) {
-                // No hit-area margin: the text field's accessibility frame (a
-                // rotated card's bounding box) reaches up to the icon, and any
-                // margin made the text field's activation open the picker.
-                glyph
-            }
-            .buttonStyle(.pressable(scale: 0.92))
-            .accessibilityLabel("Icon: \(icon.accessibilityName)")
-            .accessibilityHint("Opens the icon picker")
-            .accessibilityIdentifier("cardIcon")
+            Button(action: onIconTap) { glyph }
+                .buttonStyle(.pressable(scale: 0.92))
+                .accessibilityLabel("Icon: \(icon.accessibilityName)")
+                .accessibilityHint("Opens the icon picker")
+                .accessibilityIdentifier("cardIcon")
         } else {
             glyph
         }
@@ -179,14 +177,7 @@ struct NoteCardContent<TextArea: View>: View {
 
     @ViewBuilder
     private var tagChip: some View {
-        let label = Text("#" + tag.lowercased())
-            .softFont(.noteTag)
-            .foregroundStyle(Theme.Palette.inkSecondary)
-            .lineLimit(1)
-            .padding(.horizontal, 8)
-            .frame(height: tagHeight)
-            .background(Capsule().fill(Theme.Palette.paperTag))
-            .contentTransition(.interpolate)
+        let label = TagChipLabel(tag: tag)
 
         if let onTagTap {
             Button(action: onTagTap) { label }
@@ -197,6 +188,25 @@ struct NoteCardContent<TextArea: View>: View {
         } else {
             label
         }
+    }
+}
+
+/// "#daily" on its capsule. Its own view so the capsule height (a scaled
+/// metric) reads the same capped Dynamic Type size as its text.
+private struct TagChipLabel: View {
+    let tag: String
+    /// 20pt at the default size; grows with the (capped) text.
+    @ScaledMetric(relativeTo: .caption2) private var height: CGFloat = 20
+
+    var body: some View {
+        Text("#" + tag.lowercased())
+            .softFont(.noteTag)
+            .foregroundStyle(Theme.Palette.inkSecondary)
+            .lineLimit(1)
+            .padding(.horizontal, 8)
+            .frame(height: height)
+            .background(Capsule().fill(Theme.Palette.paperTag))
+            .contentTransition(.interpolate)
     }
 }
 
@@ -248,33 +258,51 @@ struct NoteCardStaticText: View {
 // MARK: - Note text size (Dynamic Type, Step 11)
 
 /// The card's note text scales with Dynamic Type, but the card itself is fold
-/// geometry and keeps its size. So the text takes its scaled size only while
-/// the text still fits the text area; otherwise it shrinks back — never below
-/// the default 24pt, at which the 48-character cap is known to fit 4 lines
-/// (`testTextCapAndFit`). At the default text size this is exactly 24pt,
-/// 1.4pt line spacing, 4 lines — what the fixed token gave.
+/// geometry and keeps its size. Rule, per text size:
+/// • base = the largest size (≤ the scaled size) at which a TYPICAL full-length
+///   note (48 characters, `typicalSample`) fits the text area — a constant, so
+///   the text doesn't change size while you type (a focused vertical TextField
+///   ignores font changes: measured at AX5, the text kept its size and scrolled);
+/// • text that still doesn't fit at base (e.g. all capitals) shrinks further —
+///   never below the default 24pt, at which the 48-character cap is known to fit
+///   4 lines (`testTextCapAndFit`). While typing such text scrolls inside the
+///   card; it fits once the field is left.
+/// At the default text size this is exactly 24pt, 1.4pt line spacing, 4 lines —
+/// what the fixed token gave.
 enum NoteTextFit {
     static let lineSpacing: CGFloat = NoteCardContent<EmptyView>.linePitch - 28.6     // 24pt line ≈ 28.6
     /// Text area: 208pt wide (card − insets), from `textTop` to above the tag chip.
-    static let width: CGFloat = NoteCardContent<EmptyView>.size.width - NoteCardContent<EmptyView>.inset * 2
+    /// Measured 10pt narrower: the vertical TextField lays text out in a text
+    /// container with 5pt line padding on each side (measured with "WOW" × 12:
+    /// at 208pt the fit said 3 per line, the field wrapped 2 per line and scrolled).
+    static let width: CGFloat = NoteCardContent<EmptyView>.size.width - NoteCardContent<EmptyView>.inset * 2 - 10
     static let maxHeight: CGFloat = 150
     static let minimumSize: CGFloat = SoftType.noteText.size
     private static var cache: [String: CGFloat] = [:]
 
-    /// Largest size ≤ `preferred` (and ≥ 24pt) at which `text` fits the text area.
+    /// A realistic 48-character note (the cap); sets the size for a text size.
+    static let typicalSample = "Pick up the dry cleaning and call mum back about"
+
+    /// The note text's size for `text` when the scaled (preferred) size is `preferred`.
     static func size(for text: String, preferred: CGFloat) -> CGFloat {
         guard preferred > minimumSize else { return preferred }
-        let sample = text.isEmpty ? "Tap to write..." : text
-        let key = "\(preferred)|\(sample)"
+        let base = largestFitting(typicalSample, upTo: preferred)
+        return largestFitting(text.isEmpty ? "Tap to write..." : text, upTo: base)
+    }
+
+    /// Largest size in [24pt, `limit`] at which `text` fits the text area (24pt if none does).
+    private static func largestFitting(_ text: String, upTo limit: CGFloat) -> CGFloat {
+        guard limit > minimumSize else { return limit }
+        let key = "\(limit)|\(text)"
         if let hit = cache[key] { return hit }
         var result = minimumSize
-        if fits(sample, size: preferred) {
-            result = preferred
+        if fits(text, size: limit) {
+            result = limit
         } else {
-            var lo = minimumSize, hi = preferred
+            var lo = minimumSize, hi = limit
             for _ in 0..<7 {
                 let mid = (lo + hi) / 2
-                if fits(sample, size: mid) { lo = mid } else { hi = mid }
+                if fits(text, size: mid) { lo = mid } else { hi = mid }
             }
             result = (lo * 2).rounded(.down) / 2
         }

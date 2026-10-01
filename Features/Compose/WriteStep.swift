@@ -39,6 +39,11 @@ struct WriteStep: View {
             }
             .softFont(.title)
             .tracking(-0.4)
+            // Keep the title's natural height: with the keyboard up the layout is
+            // short, and at large text sizes the squeezed lines truncated
+            // ("What's on yo…"). Now they wrap and, like the reference, ride up
+            // off the top instead. (No change at the default size.)
+            .fixedSize(horizontal: false, vertical: true)
             .foregroundStyle(Theme.Palette.ink)
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(.isHeader)

@@ -696,11 +696,22 @@ final class SoftNotesUITests: XCTestCase {
 
     /// Focus the text, delete what is there, type `text`, press Return.
     private func replaceDetailText(with text: String) {
-        detailText.tap()
+        // Tap the field's CENTRE: its frame is the bounding box of the −3° card, and
+        // XCUITest's element tap aims near the box's top-left corner — outside the
+        // tilted field, in the gap under the card icon (which then gets the tap).
+        detailText.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         Thread.sleep(forTimeInterval: 1.0)
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
         Thread.sleep(forTimeInterval: 0.7)
-        detailText.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 60))
+        // The centre tap can leave the caret mid-text: delete, and if text remains
+        // after the caret, tap again (now past the end) and delete the rest.
+        for _ in 0..<3 {
+            detailText.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 60))
+            let left = (detailText.value as? String) ?? ""
+            if left.isEmpty || left == "Tap to write..." { break }
+            detailText.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+            Thread.sleep(forTimeInterval: 0.3)
+        }
         if !text.isEmpty { detailText.typeText(text) }
         snap("99_detail_typing")
         detailText.typeText("\n")
@@ -1261,6 +1272,42 @@ final class SoftNotesUITests: XCTestCase {
     func testDynamicTypeScreensXXL() { captureDynamicTypeScreens("xxl", size: "xxLarge") }
     func testDynamicTypeScreensAX3() { captureDynamicTypeScreens("ax3", size: "accessibility3") }
     func testDynamicTypeScreensAX5() { captureDynamicTypeScreens("ax5", size: "accessibility5") }
+
+    /// At AX5 the 48-character cap still fits the (fixed-size) paper card: the note text
+    /// grows with the setting but shrinks back (never below 24pt) to stay inside the text
+    /// area — on the write card (capped at xxxLarge, like the save's card) and on the detail
+    /// card (not capped). The field's frame must stay inside the card's text area.
+    func testNoteTextFitsAtAccessibilitySizes() {
+        relaunch(["-dynamicTypeSize", "accessibility5"])
+        XCTAssertTrue(app.buttons["primaryAction"].waitForExistence(timeout: 10))
+        Thread.sleep(forTimeInterval: 1.0)
+        openWriteStep()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 0.6)
+        for character in "Pick up the dry cleaning and call mum back about" { noteText.typeText(String(character)) }
+        Thread.sleep(forTimeInterval: 0.4)
+        XCTAssertEqual(((noteText.value as? String) ?? "").count, 48)
+        // Text area: 150pt tall (+ the −1.5° / ×1.2 editing pose's bounding box).
+        XCTAssertLessThanOrEqual(noteText.frame.height, 150 * 1.2 + 8, "write card text overflows: \(noteText.frame)")
+        snap("120_ax5_write_typical")
+        noteText.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 48))
+        for character in String(repeating: "WOW ", count: 12) { noteText.typeText(String(character)) }
+        Thread.sleep(forTimeInterval: 0.4)
+        XCTAssertLessThanOrEqual(noteText.frame.height, 150 * 1.2 + 8, "write card text overflows: \(noteText.frame)")
+        snap("121_ax5_write_wide")
+        noteText.typeText("\n")
+        Thread.sleep(forTimeInterval: 0.6)
+        app.buttons["composeClose"].tap()
+        Thread.sleep(forTimeInterval: 1.0)
+
+        // Detail card (not capped).
+        openDetail()
+        replaceDetailText(with: "WOW WOW WOW WOW WOW WOW WOW WOW WOW WOW WOW WOW")
+        XCTAssertLessThanOrEqual(detailText.frame.height, 150 + 12, "detail card text overflows: \(detailText.frame)")
+        snap("122_ax5_detail_wide")
+        replaceDetailText(with: "Buy cherries")
+        snap("123_ax5_detail_short")
+    }
 
     // MARK: - Save helpers (identifier queries — cheaper than label predicates)
 

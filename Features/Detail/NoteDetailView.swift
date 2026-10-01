@@ -41,6 +41,7 @@ struct NoteDetailView: View {
 
     @Environment(NotesStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     /// 0 = at the row (closed), 1 = open. Animated by `Theme.Motion`.
     @State private var t: Double = 0
@@ -175,10 +176,20 @@ struct NoteDetailView: View {
                 Text(isPickingIcon ? "Icon" : "Note")
                     .softFont(.section)
                     .foregroundStyle(Theme.Palette.ink)
-                Text(isPickingIcon ? "Pick one for this note" : "Tap the text to edit")
-                    .softFont(.caption)
-                    .foregroundStyle(Theme.Palette.inkSecondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                // The hint line is dropped at accessibility text sizes (it would run
+                // into the buttons; VoiceOver already has it as the field's hint).
+                if !dynamicTypeSize.isAccessibilitySize {
+                    Text(isPickingIcon ? "Pick one for this note" : "Tap the text to edit")
+                        .softFont(.caption)
+                        .foregroundStyle(Theme.Palette.inkSecondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
             }
+            // Never under the buttons: back on the left, heart + delete on the right.
+            .padding(.horizontal, Theme.Metrics.navButton * 2 + 10 + 8)
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(.isHeader)
             .accessibilityFocused($titleFocused)

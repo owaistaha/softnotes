@@ -175,6 +175,8 @@ Features/
   Home/RecentNotesSection.swift Recent header + NoteRow (context menu: Save / Delete)
   TabBar/FloatingTabBar.swift   AppTab, FlowID, FloatingTabBar (sliding pill), PrimaryActionButton
   Saved/SavedView.swift         Saved list + empty state
+  Detail/NoteDetailView.swift   Step 8: the open note (in-place overlay), FlightIcon, DetailNavButton,
+                                `detailSourceNoteID` environment key
   Compose/ComposeDraft.swift    ComposeStep (pickIcon=1, write, save) + @Observable ComposeDraft
                                 (step, icon, text, tags; progress, canAdvance, advance/goBack)
   Compose/ComposeFlowView.swift Shell: ComposeNavBar + step switch (.blurFade) + Next button;
@@ -370,6 +372,31 @@ Key invariants:
   App text does NOT follow Dynamic Type: every font is a fixed
   `.system(size:)` token (checked at default / XXL / AX5 — nothing clips
   because nothing grows). Scaling is an open design decision.
+- **Note detail (Step 8):** tapping a row (Home Recent, Saved) opens `NoteDetailView`, an in-place overlay
+  owned by `RootContainerView` (`detail: DetailSession?` — id, the row's global frame, the tab, and a
+  `ComposeDraft(editing:)` edit buffer). No sheet. It reuses `NoteCardView`/`NoteCardContent` (new
+  optional `onIconTap`; compose passes none), `IconPickerStep(draft:)` for the icon grid, `cycleTag()`,
+  `ComposeDraft.sanitized` (48-char cap, same one-tick-later clamp as `WriteStep.textBinding`) and
+  `keyboardOverlapPadding()`. Edits go to `NotesStore.update(_:_:)` as they happen (debounced like every
+  mutation; no-op when nothing changed). Empty text on leaving the field restores the text from when the
+  field got focus (and writes it back — typing had committed every non-empty intermediate); never a delete.
+  Delete = trash → `confirmationDialog` → card fades/shrinks (`Theme.Motion.snappy`) → `store.delete` →
+  overlay closes. iOS 26 shows that dialog as a popover with no Cancel button (tap outside); iOS 17 shows Cancel.
+- **The open/close flight is ONE progress value `t`** (0 = at the row, 1 = open), animated with
+  `Theme.Motion.smooth`: the card grows from `startScale` 0.3 with its centre placed so its header-icon
+  slot starts exactly on the row's icon (both frames are MEASURED: the row via `onGeometryChange` in
+  `NoteRow`, the card's resting frame from its own `onGeometryChange`, which also starts the open —
+  event-driven, no delay). The icon is `FlightIcon` (Animatable in `t`: position, 40 → 32pt, glow 1 → 0.5,
+  rotation 0 → −3°); the card's header icon is hidden (`showsHeaderIcon: false`) while it flies and the two
+  swap in one frame (no animation) when the flight ends / starts. The source row hides its icon through
+  `\.detailSourceNoteID`. Closing flies back only if the row is still listed (an unsaved note leaves Saved:
+  cross-fade). Reduce Motion: 0.25 s cross-fade (`crossFade`), no flight. Measured on 60 fps video (6B
+  tooling): the icon starts on the row's icon, no gap, no double, ≈0.48 s to rest; the swap frame changes
+  pixel mass ≈3% and position ≈0.5px; close mirrors it and lands on the row slot (508.5 vs 509.1 at 402px).
+- **Don't give the card icon a hit-area margin (Step 8):** the text field's accessibility frame is the
+  bounding box of the −3° rotated card and reaches up to the icon; with an 8pt margin (even up/left/right
+  only) `XCUIElement.tap()` / a VoiceOver activation on the text field opened the picker. The icon's tap
+  target is its 32pt.
 - **Backgrounding mid-save fast-forwards** (`finishSaveNow()` on
   `scenePhase == .background`): the task is cancelled, the note is added once
   if it hadn't landed, and everything is put in its end state without
@@ -645,6 +672,9 @@ found and fixed with a watchdog harness; keyboard measured on iOS 17.5 and
 **Step 7 — Persistence.** DONE: JSON file, debounced background writes, flush on scene change,
 corrupt-file handling, tolerant decoding, test launch args.
 
+**Step 8 — Note detail / edit.** DONE: `NoteDetailView` (open from a row, edit text / icon / tag in place,
+Save heart, Delete with confirmation, Reduce Motion cross-fade, VoiceOver), `NotesStore.update`.
+
 **Next:** real-iPhone testing (the human). **Check main-thread stalls on a real device and in a
 Release build** — every stall number in this file is a Debug build on a loaded simulator host. Open: Dynamic Type (fixed fonts),
 the ≈650 ms stall on the very first keyboard after a fresh install.
@@ -856,10 +886,12 @@ with simple fades.
 - [x] Step 6A — Polish: save-sequence fixes (empty slot, count/toggle timing, two-step rise) + visual polish
 - [x] Step 6B — Robustness: main-thread hang fixed, iOS 17.5 check, SE scroll vs tilt, Reduce Motion, VoiceOver
 - [x] Step 7 — Notes persist between launches (JSON file, debounced writes, flush, corrupt handling)
+- [x] Step 8 — Note detail and edit screen (open from the row, edit in place, heart, delete)
 - [ ] Real-iPhone test (human); open: Dynamic Type (fixed fonts — no text scales, a design decision), first-keyboard cold stall; stalls on a real device / Release build; VoiceOver may read each Recent row twice (see log)
 
 Log:
 - (add one line per session: date, what changed, what's still off vs the reference)
+- 2026-10-01 — Step 8: note detail. `NoteDetailView` overlay (see Architecture): card + icon grow from the tapped row (measured frames, one travelling icon), text / icon (IconPickerStep) / tag edit in place → `NotesStore.update` (debounced, no-op if unchanged), heart toggle (switch), delete with confirmation (fade-out then list closes the gap), empty text restores the pre-edit text. Reduce Motion = 0.25 s cross-fade. VoiceOver: field "Note text" + hint, heart switch "Saved" On/Off, delete hint, focus on the title after opening. `ComposeDraft(editing:)`, `NoteCardContent.onIconTap` (additive; compose, save timeline and FoldTimeline untouched). Video (60 fps): the icon travels as ONE object — starts on the row icon, no gap, no double, ≈0.48 s open; close lands on the row slot. Found by the tests: an 8pt hit margin on the card icon made the text field's activation open the picker (removed); the empty-text restore was overwritten by the cap logic's one-tick clean-up write and restored the last intermediate ("B") instead of the original. Tests: 3 unit + 12 UI (open/close, edit text → relaunch, empty restores, 48 cap, icon → relaunch, tag → relaunch, heart (+ from Saved), delete confirm, cancel, Reduce Motion flow, accessibility, video). Rough: see report.
 - 2026-10-01 — Step 7: persistence. `NotePersistence.swift` (protocol + file + in-memory + versioned codec), tolerant `Note`/`NoteIcon` decoding, `NotesStore(persistence:)` (load/seed once, 300 ms debounce, background write, `flush()` on scenePhase ≠ active after `finishSaveNow()`), store created once in the App. Corrupt file → `notes.corrupt-<stamp>.json`, empty, never re-seeded; partial decode keeps `notes.partial-<stamp>.json`. Launch args `-resetStore`/`-inMemoryStore`/`-emptyStore`/`-persistDemo`; demo flows in-memory. Copy: Recent empty text for zero notes; folder label "1 note". Tests: 18 unit (round trip, envelope/ISO 8601, bad symbol/tone/corrupt note, corrupt file, never re-seeds, debounce collapse, flush, exactly-once, failed write retry) + 6 UI (save → kill → relaunch, saved toggle → home → kill, delete, empty store, demo flows leave the file alone, first note into an empty store). `testDemoSaveLaunchArgument` flaked 2/10 on the pre-Step-7 commit too: it tapped Next while auto-focus was moving it; now waits for the keyboard (14/14). Full suite: 0 retries after that fix. No animation, timing or visual change (only the empty-Recent copy and the folder's "1 note" label). Not verified: a real device (file protection, kill during a write), VoiceOver — the tree shows each Recent row as a Button wrapping a same-framed Button (moving the identifier / modifiers did not change it; likely the context-menu wrapper), so VoiceOver may read rows twice.
 - 2026-10-01 — Step 6B: HANG — watchdog + `-keyboardCycles` harness + stall-stress with auto-sample; app-driven cycles alone never stalled, the write-step tests hung 5/21 runs (> 32 s); samples put `KeyboardOverlapPadding`'s GeometryReader onChange in the loop, debug prints showed the cycle 587 → 611 → 623 → 0 (content overflow + cap). First fix (UIKit-only padding, compose ignores the keyboard) stopped the hang but lagged the keys ≈150 ms on video → final: SwiftUI safe area for timing, GeometryReader-pinned content, edge read in body, no layout state. After: 15/15 write-step runs + 60 keyboard cycles under XCUITest with 0 stalls > 500 ms (worst ping 222–433 ms); full suite 22/22 first attempt, 0 retries. The Step 4 "44pt lip" was the overflow: SwiftUI edge = UIKit top on 26.5 (539) and 17.5 (482/516) → correction measured 0 on both, kept gated. Typing Next gap 22 → 17 (centre 55.5pt above keys, ref ≈55; was 48.5). iOS 17.5 (iPhone 15 Pro): write step correct, 20 cycles 0 stalls. SE: folder drag scrolled 0pt vs 103pt from "Recent" → tilt starts at 20pt + vertical drags go to the scroll view, only when Home scrolls (now 103 vs 103); 17 Pro tilt identical old vs new on video. Reduce Motion: picker ring/preview fade, bounce off, chips fade, tab pill fades, new full-flow test. VoiceOver: row labels, spoken icon names, note field label/hint, tag hint, "Note saved. N notes." announcement, testAccessibilityLabels. Open: no Dynamic Type scaling (fixed fonts); a ≈650 ms main-thread stall on the first keyboard after a fresh install (1 of 5 launches, none after; debug build); 4 launch-time stalls 533–826 ms seen in stress runs.
 - 2026-09-30 — Step 6A: save — chips vacate the centre slot at `.folded` (push shows 2 chips, nothing crosses the landing chip; shuffling at push start showed the leaving chip); count leads the store from 3080 (roll ≈3033–3167 vs ref 3040–3140), bounce stays on the landing (landing point is for the folder at rest); drop 3040 → 2990, close = landing + 70 (toggle ≈3480 vs 3500); card rises in two steps (`pushStep` 2510, 82%/18%; mean error 9.2 → 4.1pt) — kept. Hand-off re-tracked: swap-frame diff 0.04–0.07 (smallest in window), blue pixels steady. Polish (measured at the reference's resolution): title 34 → 36 (88.0×24.3 → 93.0×25.7 vs 94.0×25.6); glyph 0.32 regular → 0.38 semibold (star radius 5.30 → 5.96 vs 5.96, ink 46 → 80 vs 78); toggle label 17 medium → 19 semibold (44.0 → 50.0pt vs 50.2) + grey rim (edge blue 247 → 238 vs 241); folder front band (profile within 1 level incl. step); picker title +1.5pt (70.6 → 72.3 vs 72.1; grid unchanged 304.6 vs 304.4); picker glass `.vivid` (sat 53.2 → 57.8 vs 58.8). NOT changed: tab bar "4pt higher" — ours already sits 38pt above the screen bottom vs ≈35 in the ref; Next "64pt" — ref Next and FAB both measure 61.3–62.9pt (ours 62). Suite: 12/16 first attempt, 4 write-step tests hit the UI-query stall and passed on retry; sampling showed the APP spinning in a safe-area layout loop (not XCTest) → 6B. Still off: ref folder dips with the count roll, ours bounces at the landing (≈150 ms later); drop ≈60 ms late on the final run (host jitter ±1–4 frames); new row ≈60 ms late; ref's lowest ≈20pt of the front panel 2–4 levels darker; ref toggle ink more muted, knob shadow stronger.

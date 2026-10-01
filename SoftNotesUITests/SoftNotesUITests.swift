@@ -648,7 +648,11 @@ final class SoftNotesUITests: XCTestCase {
     func testDemoFlowsDoNotTouchTheRealFile() {
         launchOnDisk(["-resetStore"])
         XCTAssertEqual(folderLabel, "Notes folder, 8 notes")
-        launchOnDisk(["-demoFold"])
+        // No UI queries until the demo's keyboard is gone (see waitOutDemoKeyboard):
+        // launchOnDisk polls the tree, which made this test fail 2 of 3 full runs.
+        app.terminate()
+        app.launchArguments = ["-demoFold", "-watchdog"]
+        app.launch()
         waitOutDemoKeyboard()
         waitForSaveToFinish()
         assertFiled(count: 9)
@@ -698,6 +702,7 @@ final class SoftNotesUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 0.7)
         detailText.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 60))
         if !text.isEmpty { detailText.typeText(text) }
+        snap("99_detail_typing")
         detailText.typeText("\n")
         Thread.sleep(forTimeInterval: 0.7)
     }

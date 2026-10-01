@@ -37,7 +37,7 @@ is not done.
   hand-edit `.xcodeproj` / `project.pbxproj`.
 - Swift language mode **5** (not 6) for now, to avoid strict-concurrency
   noise while the UI is being built. Revisit later.
-- No persistence yet — `NotesStore` is in-memory with sample data.
+- Persistence (Step 7): notes live in a versioned JSON file (no SwiftData) — see "Persistence" below.
 
 ---
 
@@ -161,6 +161,8 @@ DesignSystem/
 Models/
   Note.swift                    IconShape, NoteIcon (+ .library: the 12 picker icons, outline
                                 symbols), Note (+ .samples: 8 notes, .demo()), Date.softRelative(to:)
+  NotePersistence.swift         NotePersisting protocol, NoteCodec ({version, notes}, ISO 8601), FileNotePersistence
+                                (Application Support/SoftNotes/notes.json), InMemoryNotePersistence
   NotesStore.swift              @Observable: notes (newest first), count, recent (≤48h, max 3),
                                 folderPreview (first 3), saved, add, toggleSaved, delete
 Features/
@@ -372,6 +374,32 @@ Key invariants:
   `scenePhase == .background`): the task is cancelled, the note is added once
   if it hadn't landed, and everything is put in its end state without
   animation. Nothing can dismiss compose during a save (no hit testing).
+
+### Persistence (Step 7)
+
+- File: `Application Support/SoftNotes/notes.json`, `{"version": 1, "notes": [...]}`, dates ISO 8601
+  with milliseconds (reads without too), written atomically on a background serial queue.
+  `NotesStore(persistence:)` takes a `NotePersisting`; production = `FileNotePersistence.standard`,
+  tests = temp directory or `InMemoryNotePersistence`. `NotesStore(notes:)` = previews (no writes).
+- The store is created ONCE in `SoftNotesApp` and injected into `RootContainerView(store:)` — a
+  `@State` initial value is re-evaluated whenever the view struct is rebuilt, which would load or
+  seed repeatedly.
+- Seeding: only when there is no file AND `hasSeeded` (UserDefaults) is unset; an emptied list stays
+  empty. A mutation (`add`, `toggleSaved`, `delete`) only marks the store dirty and re-arms a 300 ms
+  debounce — no encoding, no I/O — so the save timeline's animation closures may call it. The
+  landing's `store.add` is therefore written exactly once. `flush()` (write now, wait) runs when
+  `scenePhase != .active`, AFTER `finishSaveNow()` so a fast-forwarded note is included.
+- Unreadable / unsupported-version file: moved to `notes.corrupt-<UTC stamp>.json`, store starts
+  empty, `hasSeeded` set (never re-seeded); if the move fails, writes are disabled so the file is
+  never overwritten. Notes that can't be decoded are skipped (only a title and a date are
+  required) and the original is first copied to `notes.partial-<stamp>.json`. Unknown SF Symbol →
+  `doc.text`, unknown tone → lavender, unknown shape → squircle.
+- DEBUG launch args: `-resetStore` (delete file + seeded flag), `-inMemoryStore` (no disk; every
+  UI test except the persistence ones launches with it), `-emptyStore` (mark seeded: zero notes;
+  use with `-resetStore`). The demo flows (`-demoSave`, `-demoFold`, `-keyboardCycles`) are
+  in-memory unless `-persistDemo` is also passed.
+- Empty states: zero notes → no chips, bubble "0", Recent reads "No notes yet. Tap + to write your
+  first one."; Saved keeps its empty state. Folder label: "1 note" / "N notes".
 
 ---
 
@@ -614,7 +642,11 @@ glass. Not changed (measured, see log): tab bar height, Next disc size.
 found and fixed with a watchdog harness; keyboard measured on iOS 17.5 and
 26.5; SE scroll vs tilt; Reduce Motion for the rest; VoiceOver pass.
 
-**Next:** real-iPhone testing (the human). Open: Dynamic Type (fixed fonts),
+**Step 7 — Persistence.** DONE: JSON file, debounced background writes, flush on scene change,
+corrupt-file handling, tolerant decoding, test launch args.
+
+**Next:** real-iPhone testing (the human). **Check main-thread stalls on a real device and in a
+Release build** — every stall number in this file is a Debug build on a loaded simulator host. Open: Dynamic Type (fixed fonts),
 the ≈650 ms stall on the very first keyboard after a fresh install.
 
 **Later / explicitly out of scope until asked:** note detail/edit screen,
@@ -823,10 +855,12 @@ with simple fades.
 - [x] Step 5B — rest of 06 Fold (push, drop into the folder) + 07 file away + hand-off
 - [x] Step 6A — Polish: save-sequence fixes (empty slot, count/toggle timing, two-step rise) + visual polish
 - [x] Step 6B — Robustness: main-thread hang fixed, iOS 17.5 check, SE scroll vs tilt, Reduce Motion, VoiceOver
-- [ ] Real-iPhone test (human); open: Dynamic Type, first-keyboard cold stall
+- [x] Step 7 — Notes persist between launches (JSON file, debounced writes, flush, corrupt handling)
+- [ ] Real-iPhone test (human); open: Dynamic Type (fixed fonts — no text scales, a design decision), first-keyboard cold stall; stalls on a real device / Release build; VoiceOver may read each Recent row twice (see log)
 
 Log:
 - (add one line per session: date, what changed, what's still off vs the reference)
+- 2026-10-01 — Step 7: persistence. `NotePersistence.swift` (protocol + file + in-memory + versioned codec), tolerant `Note`/`NoteIcon` decoding, `NotesStore(persistence:)` (load/seed once, 300 ms debounce, background write, `flush()` on scenePhase ≠ active after `finishSaveNow()`), store created once in the App. Corrupt file → `notes.corrupt-<stamp>.json`, empty, never re-seeded; partial decode keeps `notes.partial-<stamp>.json`. Launch args `-resetStore`/`-inMemoryStore`/`-emptyStore`/`-persistDemo`; demo flows in-memory. Copy: Recent empty text for zero notes; folder label "1 note". Tests: 18 unit (round trip, envelope/ISO 8601, bad symbol/tone/corrupt note, corrupt file, never re-seeds, debounce collapse, flush, exactly-once, failed write retry) + 6 UI (save → kill → relaunch, saved toggle → home → kill, delete, empty store, demo flows leave the file alone, first note into an empty store). `testDemoSaveLaunchArgument` flaked 2/10 on the pre-Step-7 commit too: it tapped Next while auto-focus was moving it; now waits for the keyboard (14/14). Full suite: 0 retries after that fix. No animation, timing or visual change (only the empty-Recent copy and the folder's "1 note" label). Not verified: a real device (file protection, kill during a write), VoiceOver — the tree shows each Recent row as a Button wrapping a same-framed Button (moving the identifier / modifiers did not change it; likely the context-menu wrapper), so VoiceOver may read rows twice.
 - 2026-10-01 — Step 6B: HANG — watchdog + `-keyboardCycles` harness + stall-stress with auto-sample; app-driven cycles alone never stalled, the write-step tests hung 5/21 runs (> 32 s); samples put `KeyboardOverlapPadding`'s GeometryReader onChange in the loop, debug prints showed the cycle 587 → 611 → 623 → 0 (content overflow + cap). First fix (UIKit-only padding, compose ignores the keyboard) stopped the hang but lagged the keys ≈150 ms on video → final: SwiftUI safe area for timing, GeometryReader-pinned content, edge read in body, no layout state. After: 15/15 write-step runs + 60 keyboard cycles under XCUITest with 0 stalls > 500 ms (worst ping 222–433 ms); full suite 22/22 first attempt, 0 retries. The Step 4 "44pt lip" was the overflow: SwiftUI edge = UIKit top on 26.5 (539) and 17.5 (482/516) → correction measured 0 on both, kept gated. Typing Next gap 22 → 17 (centre 55.5pt above keys, ref ≈55; was 48.5). iOS 17.5 (iPhone 15 Pro): write step correct, 20 cycles 0 stalls. SE: folder drag scrolled 0pt vs 103pt from "Recent" → tilt starts at 20pt + vertical drags go to the scroll view, only when Home scrolls (now 103 vs 103); 17 Pro tilt identical old vs new on video. Reduce Motion: picker ring/preview fade, bounce off, chips fade, tab pill fades, new full-flow test. VoiceOver: row labels, spoken icon names, note field label/hint, tag hint, "Note saved. N notes." announcement, testAccessibilityLabels. Open: no Dynamic Type scaling (fixed fonts); a ≈650 ms main-thread stall on the first keyboard after a fresh install (1 of 5 launches, none after; debug build); 4 launch-time stalls 533–826 ms seen in stress runs.
 - 2026-09-30 — Step 6A: save — chips vacate the centre slot at `.folded` (push shows 2 chips, nothing crosses the landing chip; shuffling at push start showed the leaving chip); count leads the store from 3080 (roll ≈3033–3167 vs ref 3040–3140), bounce stays on the landing (landing point is for the folder at rest); drop 3040 → 2990, close = landing + 70 (toggle ≈3480 vs 3500); card rises in two steps (`pushStep` 2510, 82%/18%; mean error 9.2 → 4.1pt) — kept. Hand-off re-tracked: swap-frame diff 0.04–0.07 (smallest in window), blue pixels steady. Polish (measured at the reference's resolution): title 34 → 36 (88.0×24.3 → 93.0×25.7 vs 94.0×25.6); glyph 0.32 regular → 0.38 semibold (star radius 5.30 → 5.96 vs 5.96, ink 46 → 80 vs 78); toggle label 17 medium → 19 semibold (44.0 → 50.0pt vs 50.2) + grey rim (edge blue 247 → 238 vs 241); folder front band (profile within 1 level incl. step); picker title +1.5pt (70.6 → 72.3 vs 72.1; grid unchanged 304.6 vs 304.4); picker glass `.vivid` (sat 53.2 → 57.8 vs 58.8). NOT changed: tab bar "4pt higher" — ours already sits 38pt above the screen bottom vs ≈35 in the ref; Next "64pt" — ref Next and FAB both measure 61.3–62.9pt (ours 62). Suite: 12/16 first attempt, 4 write-step tests hit the UI-query stall and passed on retry; sampling showed the APP spinning in a safe-area layout loop (not XCTest) → 6B. Still off: ref folder dips with the count roll, ours bounces at the landing (≈150 ms later); drop ≈60 ms late on the final run (host jitter ±1–4 frames); new row ≈60 ms late; ref's lowest ≈20pt of the front panel 2–4 levels darker; ref toggle ink more muted, knob shadow stronger.
 - 2026-09-30 — Step 5B: camera measured — the reference has a presentation zoom (bezel ×1.14, not built) AND an in-app zoom of Home on the folder (×1.30, not ×1.5). Built push (Home rises from below, zoomed, folder open, old count/chips), drop behind the front panel (FolderShape cutout, shrink 0.86, blur 8), icon → chip hand-off as one object (landing on the drop's completion, `.identity` chip, shape morph, newest chip on top), count roll + bounce, toggle, zoom-out with header/Recent/tab bar, held row entry, background fast-forward; the 5A `file()` bridge is gone. Final video vs reference (ms after tap): Home first visible 2000 vs 2017; card rise 1966 vs 1967; drop 3000 vs 2950; icon lands ≈3250 vs ≈3190; toggle ≈3616 vs ≈3500; Recent/+ back ≈4083–4216 vs ≈4167–4217; new row ≈5050 vs 4970. Found + fixed on video: Canvas mask stalled the first frames ≈0.5 s; screen size came back inset (zoom 50pt high); new chip hidden under the old centre chip for 3 frames; Home's chips visible at push start (rise 308 → 500). Full suite 16/16 first attempt, but the simulator host stalled for minutes in several tests (even a unit test took 459 s). Still off: reference centre slot is empty during the push (ours shows the old centre chip, which shuffles out by spec); count roll ≈100 ms after the reference's (ours waits for the icon); toggle ≈100 ms late; the reference card rises in two steps, ours in one; the + fades in place (ref rides the zoom-out up); flap "ears" still shorter.

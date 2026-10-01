@@ -11,6 +11,7 @@ struct SoftNotesApp: App {
                 // The soft-UI palette is designed for light mode only (for now).
                 .preferredColorScheme(.light)
                 .modifier(DebugReduceMotion())
+                .modifier(DebugDynamicTypeSize())
         }
     }
 }
@@ -23,6 +24,25 @@ private struct DebugReduceMotion: ViewModifier {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-reduceMotion") {
             content.environment(\._accessibilityReduceMotion, true)
+        } else {
+            content
+        }
+        #else
+        content
+        #endif
+    }
+}
+
+/// DEBUG launch argument `-dynamicTypeSize <name>` (e.g. `xxLarge`,
+/// `accessibility3`): sets the text size for the whole app, for screenshot
+/// tests. The system setting is used otherwise. Compiled out of release.
+private struct DebugDynamicTypeSize: ViewModifier {
+    func body(content: Content) -> some View {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        if let i = args.firstIndex(of: "-dynamicTypeSize"), i + 1 < args.count,
+           let size = DynamicTypeSize.allCases.first(where: { "\($0)" == args[i + 1] }) {
+            content.environment(\.dynamicTypeSize, size)
         } else {
             content
         }

@@ -29,6 +29,8 @@ struct SearchView: View {
     var onClose: () -> Void
     var onSelectNote: (Note, CGRect) -> Void
     @FocusState private var isFocused: Bool
+    /// The field wraps text: it grows with it (46pt at the default size).
+    @ScaledMetric(relativeTo: .body) private var fieldHeight: CGFloat = Theme.Metrics.searchButton
 
     private var scopeNotes: [Note] { model.scope.notes(in: store) }
     private var results: [Note] { NoteSearch.results(in: scopeNotes, query: model.query) }
@@ -89,7 +91,7 @@ struct SearchView: View {
 
             TextField("", text: $model.query,
                       prompt: Text(model.scope.placeholder).foregroundStyle(Theme.Palette.inkTertiary))
-                .font(.softBody)
+                .softFont(.body)
                 .foregroundStyle(Theme.Palette.ink)
                 .tint(Theme.Palette.amber)
                 .focused($isFocused)
@@ -117,7 +119,7 @@ struct SearchView: View {
             }
         }
         .padding(.horizontal, 16)
-        .frame(height: Theme.Metrics.searchButton)
+        .frame(minHeight: fieldHeight)
         .background(SoftSurface(Capsule(), elevation: .raised))
         .animation(Theme.Motion.snappy, value: model.query.isEmpty)
     }
@@ -146,7 +148,7 @@ struct SearchView: View {
         } else {
             VStack(alignment: .leading, spacing: 10) {
                 Text(isQueryEmpty ? "Recent" : "\(results.count) \(results.count == 1 ? "result" : "results")")
-                    .font(.softSection)
+                    .softFont(.section)
                     .foregroundStyle(Theme.Palette.inkSecondary)
                     .padding(.horizontal, Theme.Metrics.listTextInset)
                     .accessibilityAddTraits(.isHeader)

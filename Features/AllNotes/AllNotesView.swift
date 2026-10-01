@@ -54,7 +54,7 @@ struct AllNotesView: View {
     private func section(_ group: NoteGroup, _ notes: [Note]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(group.rawValue)
-                .font(.softSection)
+                .softFont(.section)
                 .foregroundStyle(Theme.Palette.inkSecondary)
                 .padding(.horizontal, Theme.Metrics.listTextInset)
                 .accessibilityAddTraits(.isHeader)

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// How the paper card is posed. The *content* never changes with the pose —
 /// only rotation / scale / shadow do — so Step 5 can render `NoteCardContent`
@@ -66,6 +67,8 @@ struct NoteCardContent<TextArea: View>: View {
     /// lifts off the card — one travelling view, no cross-fade.
     var showsHeaderIcon: Bool = true
     @ViewBuilder var textArea: TextArea
+    /// The tag chip grows with its text (20pt at the default size).
+    @ScaledMetric(relativeTo: .caption2) private var tagHeight: CGFloat = 20
 
     // Geometry measured from the reference (points, 393pt phone).
     static var size: CGSize { CGSize(width: 236, height: 258) }
@@ -81,6 +84,8 @@ struct NoteCardContent<TextArea: View>: View {
     private static var headerTop: CGFloat { 13 }
     static var headerIconSize: CGFloat { 32 }
     static var headerIconGlow: CGFloat { 0.5 }
+    /// Header + tag chip stop growing here (they live in the fixed-size card).
+    static var chromeCap: DynamicTypeSize { .xLarge }
     /// Centre of the header icon in card coordinates (the header row is the
     /// icon's height — its two text lines are shorter).
     static var headerIconCenter: CGPoint {
@@ -115,12 +120,15 @@ struct NoteCardContent<TextArea: View>: View {
             header
                 .padding(.leading, Self.headerLeading)
                 .padding(.top, Self.headerTop)
+                // Card chrome is card geometry (the card never grows): capped.
+                .dynamicTypeSize(...Self.chromeCap)
 
             textArea
                 .frame(width: Self.size.width - Self.inset * 2, alignment: .topLeading)
                 .offset(x: Self.inset, y: Self.textTop)
 
             tagChip
+                .dynamicTypeSize(...Self.chromeCap)
                 .padding(.leading, Self.inset)
                 .frame(maxHeight: .infinity, alignment: .bottom)
                 .padding(.bottom, Self.inset)
@@ -133,11 +141,15 @@ struct NoteCardContent<TextArea: View>: View {
             headerIcon
             VStack(alignment: .leading, spacing: 1) {
                 Text(NoteCardFormat.heading(for: date))
-                    .font(.softNoteHeading)
+                    .softFont(.noteHeading)
                     .foregroundStyle(Theme.Palette.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
                 Text(NoteCardFormat.timestamp(for: date))
-                    .font(.softNoteMeta)
+                    .softFont(.noteMeta)
                     .foregroundStyle(Theme.Palette.inkSecondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             }
             .accessibilityElement(children: .combine)
         }
@@ -168,10 +180,11 @@ struct NoteCardContent<TextArea: View>: View {
     @ViewBuilder
     private var tagChip: some View {
         let label = Text("#" + tag.lowercased())
-            .font(.softNoteTag)
+            .softFont(.noteTag)
             .foregroundStyle(Theme.Palette.inkSecondary)
+            .lineLimit(1)
             .padding(.horizontal, 8)
-            .frame(height: 20)
+            .frame(height: tagHeight)
             .background(Capsule().fill(Theme.Palette.paperTag))
             .contentTransition(.interpolate)
 
@@ -226,11 +239,80 @@ struct NoteCardStaticText: View {
 
     var body: some View {
         Text(text)
-            .font(.softNoteText)
+            .modifier(NoteTextStyle(text: text))
             .foregroundStyle(Theme.Palette.ink)
-            .lineSpacing(NoteCardContent<NoteCardStaticText>.linePitch - 28.6)
-            .lineLimit(NoteCardContent<NoteCardStaticText>.maxLines)
             .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+// MARK: - Note text size (Dynamic Type, Step 11)
+
+/// The card's note text scales with Dynamic Type, but the card itself is fold
+/// geometry and keeps its size. So the text takes its scaled size only while
+/// the text still fits the text area; otherwise it shrinks back — never below
+/// the default 24pt, at which the 48-character cap is known to fit 4 lines
+/// (`testTextCapAndFit`). At the default text size this is exactly 24pt,
+/// 1.4pt line spacing, 4 lines — what the fixed token gave.
+enum NoteTextFit {
+    static let lineSpacing: CGFloat = NoteCardContent<EmptyView>.linePitch - 28.6     // 24pt line ≈ 28.6
+    /// Text area: 208pt wide (card − insets), from `textTop` to above the tag chip.
+    static let width: CGFloat = NoteCardContent<EmptyView>.size.width - NoteCardContent<EmptyView>.inset * 2
+    static let maxHeight: CGFloat = 150
+    static let minimumSize: CGFloat = SoftType.noteText.size
+    private static var cache: [String: CGFloat] = [:]
+
+    /// Largest size ≤ `preferred` (and ≥ 24pt) at which `text` fits the text area.
+    static func size(for text: String, preferred: CGFloat) -> CGFloat {
+        guard preferred > minimumSize else { return preferred }
+        let sample = text.isEmpty ? "Tap to write..." : text
+        let key = "\(preferred)|\(sample)"
+        if let hit = cache[key] { return hit }
+        var result = minimumSize
+        if fits(sample, size: preferred) {
+            result = preferred
+        } else {
+            var lo = minimumSize, hi = preferred
+            for _ in 0..<7 {
+                let mid = (lo + hi) / 2
+                if fits(sample, size: mid) { lo = mid } else { hi = mid }
+            }
+            result = (lo * 2).rounded(.down) / 2
+        }
+        if cache.count > 300 { cache.removeAll() }
+        cache[key] = result
+        return result
+    }
+
+    static func lineHeight(_ size: CGFloat) -> CGFloat {
+        UIFont.systemFont(ofSize: size, weight: .semibold).lineHeight + lineSpacing
+    }
+
+    /// How many lines fit the text area at `size` (4 at 24pt).
+    static func maxLines(_ size: CGFloat) -> Int { max(1, Int(maxHeight / lineHeight(size))) }
+
+    private static func fits(_ text: String, size: CGFloat) -> Bool {
+        let style = NSMutableParagraphStyle()
+        style.lineSpacing = lineSpacing
+        let rect = (text as NSString).boundingRect(
+            with: CGSize(width: width, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin],
+            attributes: [.font: UIFont.systemFont(ofSize: size, weight: .semibold), .paragraphStyle: style],
+            context: nil)
+        return rect.height.rounded(.up) <= maxHeight
+    }
+}
+
+/// Font, line spacing and line limit for the card's note text (field or static).
+struct NoteTextStyle: ViewModifier {
+    let text: String
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    func body(content: Content) -> some View {
+        let size = NoteTextFit.size(for: text, preferred: SoftType.noteText.scaledSize(at: dynamicTypeSize))
+        content
+            .font(.system(size: size, weight: SoftType.noteText.weight))
+            .lineSpacing(NoteTextFit.lineSpacing)
+            .lineLimit(NoteTextFit.maxLines(size))
     }
 }
 

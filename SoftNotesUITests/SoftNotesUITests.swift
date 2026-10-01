@@ -1229,6 +1229,39 @@ final class SoftNotesUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 1.0)
     }
 
+    // MARK: - Step 11 (Dynamic Type)
+
+    /// Home, See all, detail, search, picker, write — at one text size (`-dynamicTypeSize`, DEBUG;
+    /// nil = the system default). Screenshots `dt_<label>_<n>_<screen>`.
+    private func captureDynamicTypeScreens(_ label: String, size: String?) {
+        relaunch(size.map { ["-dynamicTypeSize", $0] } ?? [])
+        XCTAssertTrue(app.buttons["primaryAction"].waitForExistence(timeout: 10))
+        Thread.sleep(forTimeInterval: 1.5)
+        snap("dt_\(label)_1_home")
+        openAllNotes()
+        snap("dt_\(label)_2_allnotes")
+        closeAllNotes()
+        openDetail()
+        snap("dt_\(label)_3_detail")
+        closeDetail()
+        openSearch()
+        snap("dt_\(label)_4_search")
+        closeSearch()
+        app.buttons["primaryAction"].tap()
+        XCTAssertTrue(app.buttons["iconCell_0"].waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 1.0)
+        snap("dt_\(label)_5_picker")
+        app.buttons["primaryAction"].tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 1.2)
+        snap("dt_\(label)_6_write")
+    }
+
+    func testDynamicTypeScreensDefault() { captureDynamicTypeScreens("default", size: nil) }
+    func testDynamicTypeScreensXXL() { captureDynamicTypeScreens("xxl", size: "xxLarge") }
+    func testDynamicTypeScreensAX3() { captureDynamicTypeScreens("ax3", size: "accessibility3") }
+    func testDynamicTypeScreensAX5() { captureDynamicTypeScreens("ax5", size: "accessibility5") }
+
     // MARK: - Save helpers (identifier queries — cheaper than label predicates)
 
     private var saveInFlight: XCUIElement { app.descendants(matching: .any)["saveInFlight"] }

@@ -173,10 +173,10 @@ struct NoteDetailView: View {
         .overlay {
             VStack(spacing: 2) {
                 Text(isPickingIcon ? "Icon" : "Note")
-                    .font(.softSection)
+                    .softFont(.section)
                     .foregroundStyle(Theme.Palette.ink)
                 Text(isPickingIcon ? "Pick one for this note" : "Tap the text to edit")
-                    .font(.softCaption)
+                    .softFont(.caption)
                     .foregroundStyle(Theme.Palette.inkSecondary)
             }
             .accessibilityElement(children: .combine)
@@ -222,11 +222,9 @@ struct NoteDetailView: View {
                 prompt: Text("Tap to write...").foregroundStyle(Theme.Palette.inkTertiary),
                 axis: .vertical
             )
-            .font(.softNoteText)
+            .modifier(NoteTextStyle(text: draft.text))       // scales, but fits the card (Step 11)
             .foregroundStyle(Theme.Palette.ink)
-            .tint(Theme.Palette.amber)
-            .lineSpacing(NoteCardContent<EmptyView>.linePitch - 28.6)
-            .lineLimit(NoteCardContent<EmptyView>.maxLines)
+            .tint(Theme.Palette.amber)                          // amber caret
             .submitLabel(.done)
             .focused($isFocused)
             .accessibilityLabel("Note text")

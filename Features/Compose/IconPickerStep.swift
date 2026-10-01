@@ -29,7 +29,7 @@ struct IconPickerStep: View {
                 Text("Select an icon")
                 Text("for your note")
             }
-            .font(.softTitle)
+            .softFont(.title)
             .tracking(-0.4)
             .foregroundStyle(Theme.Palette.ink)
             .accessibilityElement(children: .combine)

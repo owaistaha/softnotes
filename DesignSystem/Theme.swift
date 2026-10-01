@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // MARK: - Design tokens
 // Values sampled directly from the reference recording (see README → "Design spec").
@@ -70,6 +71,9 @@ enum Theme {
 
         /// Round nav buttons in the compose flow.
         static let navButton: CGFloat     = 46
+        /// Dynamic Type cap for measured/animated geometry (folder, tab bar + FAB,
+        /// the save's card) — their text stops growing here (Step 11).
+        static let geometricTypeCap: DynamicTypeSize = .xxxLarge
 
         // Icon picker (step 1), measured from the reference.
         static let pickerCell: CGFloat     = 70
@@ -228,27 +232,105 @@ enum PastelTone: String, CaseIterable, Codable, Identifiable, Hashable {
 // The reference uses a tight neo-grotesk. SF Pro with slight negative tracking
 // is a close match; swap `design`/family here if you license a custom face.
 
-extension Font {
-    /// Home/Saved header. Measured on the 14.0 s frame: "Notes" ink ≈94pt
-    /// wide, cap height ≈25.6pt → 36pt (34pt gave 88 × 24.3).
-    static let softLargeTitle = Font.system(size: 36, weight: .bold)
+/// Text styles (Step 11: Dynamic Type). Each has its size at the DEFAULT text
+/// size (Large — what the reference was measured at) and the system text
+/// style it scales with. `.softFont(_:)` turns it into a font for the current
+/// Dynamic Type size through `UIFontMetrics`; at Large that is exactly
+/// `Font.system(size: size, weight: weight)`, i.e. pixel-identical to the
+/// fixed `Font.soft*` tokens these replaced. Geometric areas (folder, tab bar,
+/// the paper card in the save) cap the size with `.dynamicTypeSize(...)`.
+enum SoftType: CaseIterable {
+    /// Home / Saved / All Notes header. Measured on the 14.0 s frame: "Notes"
+    /// ink ≈94pt wide, cap height ≈25.6pt → 36pt (34pt gave 88 × 24.3).
+    case largeTitle
     /// Compose step titles — measured ≈ 28pt with tight leading (31pt pitch).
-    static let softTitle      = Font.system(size: 28, weight: .bold)
-    static let softHeadline   = Font.system(size: 16, weight: .semibold)
-    /// Note row titles — one step lighter than `softHeadline` (per reference).
-    static let softRowTitle   = Font.system(size: 16, weight: .medium)
-    static let softSection    = Font.system(size: 15, weight: .semibold)
-    static let softBody       = Font.system(size: 15, weight: .regular)
-    static let softCaption    = Font.system(size: 13, weight: .regular)
-    static let softTabLabel   = Font.system(size: 12, weight: .medium)
-    /// Folder toggle label — measured "Notes" ink 50.2 × 13.8pt (17 medium
-    /// gave 44.0 × 12.3).
-    static let softToggleLabel = Font.system(size: 19, weight: .semibold)
+    case title
+    case headline
+    /// Note row titles — one step lighter than `headline` (per reference).
+    case rowTitle
+    case section
+    case body
+    case caption
+    case tabLabel
+    /// Folder toggle label — measured "Notes" ink 50.2 × 13.8pt (17 medium gave 44.0 × 12.3).
+    case toggleLabel
+    /// "See all" on Home.
+    case seeAll
+    /// Compose / detail nav subtitle ("Step 1 of 2", "Tap the text to edit").
+    case navSubtitle
+    /// The folder's count bubble.
+    case count
     // Paper note card (04 Write a chit) — measured from the reference.
-    static let softNoteText    = Font.system(size: 24, weight: .semibold)
-    static let softNoteHeading = Font.system(size: 13, weight: .semibold)
-    static let softNoteMeta    = Font.system(size: 11, weight: .regular)
-    static let softNoteTag     = Font.system(size: 11, weight: .medium)
+    case noteText, noteHeading, noteMeta, noteTag
+
+    /// Point size at the default Dynamic Type size (Large).
+    var size: CGFloat {
+        switch self {
+        case .largeTitle: 36
+        case .title: 28
+        case .headline, .rowTitle: 16
+        case .section, .body: 15
+        case .seeAll: 14
+        case .caption, .noteHeading: 13
+        case .tabLabel, .navSubtitle: 12
+        case .toggleLabel, .count: 19
+        case .noteText: 24
+        case .noteMeta, .noteTag: 11
+        }
+    }
+
+    var weight: Font.Weight {
+        switch self {
+        case .largeTitle, .title: .bold
+        case .headline, .section, .toggleLabel, .noteText, .noteHeading: .semibold
+        case .rowTitle, .tabLabel, .noteTag: .medium
+        case .body, .caption, .seeAll, .navSubtitle, .count, .noteMeta: .regular
+        }
+    }
+
+    /// The system style whose growth this one follows.
+    var textStyle: UIFont.TextStyle {
+        switch self {
+        case .largeTitle: .largeTitle
+        case .title: .title1
+        case .noteText: .title2
+        case .toggleLabel, .count: .title3
+        case .headline: .headline
+        case .rowTitle, .body: .body
+        case .section, .seeAll: .subheadline
+        case .caption, .noteHeading: .footnote
+        case .tabLabel, .navSubtitle: .caption1
+        case .noteMeta, .noteTag: .caption2
+        }
+    }
+
+    /// The size at a Dynamic Type size (exactly `size` at `.large`).
+    func scaledSize(at dynamicTypeSize: DynamicTypeSize) -> CGFloat {
+        guard dynamicTypeSize != .large else { return size }
+        let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(dynamicTypeSize))
+        return UIFontMetrics(forTextStyle: textStyle).scaledValue(for: size, compatibleWith: traits)
+    }
+
+    func font(at dynamicTypeSize: DynamicTypeSize, weight override: Font.Weight? = nil) -> Font {
+        .system(size: scaledSize(at: dynamicTypeSize), weight: override ?? weight)
+    }
+}
+
+private struct SoftFontModifier: ViewModifier {
+    let type: SoftType
+    let weight: Font.Weight?
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    func body(content: Content) -> some View {
+        content.font(type.font(at: dynamicTypeSize, weight: weight))
+    }
+}
+
+extension View {
+    /// The app's font for `type`, scaled for the current Dynamic Type size.
+    func softFont(_ type: SoftType, weight: Font.Weight? = nil) -> some View {
+        modifier(SoftFontModifier(type: type, weight: weight))
+    }
 }
 
 // MARK: - Helpers

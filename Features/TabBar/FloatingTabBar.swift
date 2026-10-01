@@ -99,8 +99,10 @@ struct FloatingTabBar: View {
             VStack(spacing: 4) {
                 StackedIconView(icon: tab.icon, size: 24, isMuted: !isSelected)
                 Text(tab.title)
-                    .font(.softTabLabel)
+                    .softFont(.tabLabel)
                     .fontWeight(isSelected ? .semibold : .medium)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
                     .foregroundStyle(isSelected ? Theme.Palette.ink : Theme.Palette.inkSecondary)
             }
             .frame(width: 104)

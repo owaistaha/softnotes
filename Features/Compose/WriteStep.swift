@@ -37,7 +37,7 @@ struct WriteStep: View {
                 Text("What’s on your")
                 Text("mind today?")
             }
-            .font(.softTitle)
+            .softFont(.title)
             .tracking(-0.4)
             .foregroundStyle(Theme.Palette.ink)
             .accessibilityElement(children: .combine)
@@ -114,17 +114,18 @@ struct WriteStep: View {
                     .foregroundStyle(Theme.Palette.inkTertiary),
                 axis: .vertical
             )
-            .font(.softNoteText)
+            .modifier(NoteTextStyle(text: draft.text))       // scales, but fits the card (Step 11)
             .foregroundStyle(Theme.Palette.ink)
             .tint(Theme.Palette.amber)                          // amber caret
-            .lineSpacing(NoteCardContent<EmptyView>.linePitch - 28.6)   // 24pt line ≈ 28.6
-            .lineLimit(NoteCardContent<EmptyView>.maxLines)
             .submitLabel(.done)
             .focused($isFocused)
             .accessibilityLabel("Note")
             .accessibilityHint("Up to \(ComposeDraft.maxTextLength) characters. Return when done.")
             .accessibilityIdentifier("noteText")
         })
+        // The save's flying card is capped at xxxLarge (fold geometry); the write card
+        // matches it so the hand-off shows the same text.
+        .dynamicTypeSize(...Theme.Metrics.geometricTypeCap)
         // Where the fold starts from (layout frame; the pose is re-applied there).
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { draft.cardFrame = $0 }
         // The fold overlay takes over in the same frame — hide instantly. The

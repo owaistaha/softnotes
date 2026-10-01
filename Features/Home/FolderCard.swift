@@ -241,7 +241,9 @@ struct FolderCard: View {
 
     private var countBubble: some View {
         Text(count, format: .number)
-            .font(.system(size: 19, weight: .regular))
+            .softFont(.count)
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
             .foregroundStyle(Theme.Palette.inkSecondary)
             .contentTransition(.numericText(value: Double(count)))
             .animation(Theme.Motion.snappy, value: count)
@@ -356,8 +358,9 @@ struct FolderToggle: View {
                     }
 
                 Text(title)
-                    .font(.softToggleLabel)
+                    .softFont(.toggleLabel)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.6)
                     .foregroundStyle(isOn ? Theme.Palette.lavenderInk : Theme.Palette.inkSecondary)
                     .frame(maxWidth: .infinity, alignment: isOn ? .leading : .trailing)
                     .padding(.leading, isOn ? labelInset : knobSide)

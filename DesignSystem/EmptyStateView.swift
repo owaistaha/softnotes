@@ -11,10 +11,10 @@ struct EmptyStateView: View {
         VStack(spacing: 14) {
             StackedIconView(icon: icon, size: 56)
             Text(title)
-                .font(.softHeadline)
+                .softFont(.headline)
                 .foregroundStyle(Theme.Palette.ink)
             Text(message)
-                .font(.softCaption)
+                .softFont(.caption)
                 .foregroundStyle(Theme.Palette.inkSecondary)
                 .multilineTextAlignment(.center)
         }

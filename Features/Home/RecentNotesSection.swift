@@ -11,11 +11,11 @@ struct RecentNotesSection: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
                 Text("Recent")
-                    .font(.softSection)
+                    .softFont(.section)
                     .foregroundStyle(Theme.Palette.ink)
                 Spacer()
                 Button("See all", action: onSeeAll)
-                    .font(.system(size: 14))
+                    .softFont(.seeAll)
                     .foregroundStyle(Theme.Palette.inkSecondary)
             }
             // Section label lines up with the header text, not the rows.
@@ -25,7 +25,7 @@ struct RecentNotesSection: View {
                 Text(hasAnyNotes
                      ? "Nothing new in the last two days. Tap + to write a note."
                      : "No notes yet. Tap + to write your first one.")
-                    .font(.softCaption)
+                    .softFont(.caption)
                     .foregroundStyle(Theme.Palette.inkSecondary)
                     .padding(.vertical, 16)
                     .padding(.horizontal, Theme.Metrics.listTextInset)
@@ -54,6 +54,10 @@ struct NoteRow: View {
     var query: String = ""
     var action: (CGRect) -> Void
     @Environment(\.detailSourceNoteID) private var detailSourceNoteID
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    /// Row height and vertical padding grow with the text (58 / 6 at the default size).
+    @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = Theme.Metrics.rowHeight
+    @ScaledMetric(relativeTo: .body) private var rowPadding: CGFloat = 6
     @State private var frame: CGRect = .zero
 
     private let shape = RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous)
@@ -66,7 +70,7 @@ struct NoteRow: View {
         for range in NoteSearch.ranges(in: title, query: query) {
             let lower = text.index(text.startIndex, offsetByCharacters: title.distance(from: title.startIndex, to: range.lowerBound))
             let upper = text.index(text.startIndex, offsetByCharacters: title.distance(from: title.startIndex, to: range.upperBound))
-            text[lower..<upper].font = Font.softRowTitle.weight(.bold)
+            text[lower..<upper].font = SoftType.rowTitle.font(at: dynamicTypeSize, weight: .bold)
             text[lower..<upper].foregroundColor = Theme.Palette.lavenderInk
         }
         return text
@@ -82,19 +86,20 @@ struct NoteRow: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(emphasised(note.title))
-                        .font(.softRowTitle)
+                        .softFont(.rowTitle)
                         .foregroundStyle(Theme.Palette.ink)
-                        .lineLimit(1)
+                        // Accessibility sizes: titles may wrap to a second line.
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                     // Re-render once a minute so "Just now" → "1m ago" stays honest.
                     HStack(spacing: 4) {
                         TimelineView(.periodic(from: .now, by: 60)) { context in
                             Text(note.createdAt.softRelative(to: context.date))
-                                .font(.softCaption)
+                                .softFont(.caption)
                                 .foregroundStyle(Theme.Palette.inkSecondary)
                         }
                         if let tag = matchedTag {
                             Text("· #" + tag.lowercased())
-                                .font(.softCaption.weight(.semibold))
+                                .softFont(.caption, weight: .semibold)
                                 .foregroundStyle(Theme.Palette.lavenderInk)
                         }
                     }
@@ -108,8 +113,8 @@ struct NoteRow: View {
             }
             .padding(.leading, Theme.Metrics.rowLeading)
             .padding(.trailing, Theme.Metrics.rowTrailing)
-            .padding(.vertical, 6)
-            .frame(minHeight: Theme.Metrics.rowHeight)
+            .padding(.vertical, rowPadding)
+            .frame(minHeight: rowHeight)
             .background(SoftSurface(shape, elevation: .raised))
             .contentShape(shape)
         }

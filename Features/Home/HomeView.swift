@@ -53,6 +53,8 @@ struct HomeView: View {
                     sharesDragsWithScroll: homeScrolls,
                     onTap: onOpenFolder
                 )
+                // Measured, animated geometry (the save lands on it): its text stops growing.
+                .dynamicTypeSize(...Theme.Metrics.geometricTypeCap)
                 // Report the folder's on-screen frame so the compose flow can
                 // aim the save → fold → file-away animation at it.
                 .background {
@@ -123,11 +125,11 @@ struct ScreenHeader: View {
             VStack(alignment: .leading, spacing: 4) {
                 if showsDate {
                     Text(Self.dateFormatter.string(from: .now))
-                        .font(.softCaption)
+                        .softFont(.caption)
                         .foregroundStyle(Theme.Palette.inkSecondary)
                 }
                 Text(title)
-                    .font(.softLargeTitle)
+                    .softFont(.largeTitle)
                     .tracking(-0.6)
                     .foregroundStyle(Theme.Palette.ink)
                     .contentTransition(.interpolate)

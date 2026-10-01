@@ -165,10 +165,10 @@ struct ComposeNavBar: View {
             Spacer()
             VStack(spacing: 2) {
                 Text("New note")
-                    .font(.system(size: 15, weight: .semibold))
+                    .softFont(.section)
                     .foregroundStyle(Theme.Palette.ink)
                 Text("Step \(step) of \(totalSteps)")
-                    .font(.system(size: 12))
+                    .softFont(.navSubtitle)
                     .foregroundStyle(Theme.Palette.inkSecondary)
                     .contentTransition(.numericText(value: Double(step)))
             }

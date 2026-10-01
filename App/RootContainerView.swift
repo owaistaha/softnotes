@@ -125,6 +125,8 @@ struct RootContainerView: View {
                         onPrimaryAction: startComposing
                     )
                     .padding(.bottom, 4)
+                    // Tab bar + FAB: fixed geometry (and the FAB ↔ Next morph): capped.
+                    .dynamicTypeSize(...Theme.Metrics.geometricTypeCap)
                     // Hidden during the push; comes back with the zoom-out.
                     // The FAB was re-inserted while this was invisible, so it
                     // just fades in with the bar — no morph, no dip.
@@ -191,6 +193,8 @@ struct RootContainerView: View {
 
             // Always mounted: it animates its own progress values (see FoldStage).
             FoldStage(card: foldCard, phase: foldPhase, landing: landing)
+                // The paper card in the save: fold geometry, capped like the write card.
+                .dynamicTypeSize(...Theme.Metrics.geometricTypeCap)
                 .zIndex(2)
 
             // Exists only while a save is in flight — VoiceOver reads

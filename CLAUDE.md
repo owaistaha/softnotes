@@ -156,6 +156,8 @@ DesignSystem/
   SoftSurface.swift             Elevation (.raised/.floating/.folder multi-layer shadows),
                                 SoftSurface<Shape> view, PressableButtonStyle (.pressable),
                                 BlurSlideTransition (.blurSlide / .blurFade), IdleFloat (.idleFloat())
+  CircleNavButton.swift         The 46pt circular nav button (compose-style: raised disc / flat grey disc)
+  EmptyStateView.swift          Icon + headline + caption empty state (Saved, All Notes, Search)
   StackedIconView.swift         The two-tile glass icon (back solid tile + frosted front tile +
                                 thin outline glyph)
 Models/
@@ -163,6 +165,8 @@ Models/
                                 symbols), Note (+ .samples: 8 notes, .demo()), Date.softRelative(to:)
   NotePersistence.swift         NotePersisting protocol, NoteCodec ({version, notes}, ISO 8601), FileNotePersistence
                                 (Application Support/SoftNotes/notes.json), InMemoryNotePersistence
+  NoteSearch.swift              NoteGroup (Today/Yesterday/This week/Earlier), SearchScope, NoteSearch
+                                (case/diacritic-insensitive text + tag matching, emphasis ranges)
   NotesStore.swift              @Observable: notes (newest first), count, recent (≤48h, max 3),
                                 folderPreview (first 3), saved, add, toggleSaved, delete
 Features/
@@ -175,6 +179,8 @@ Features/
   Home/RecentNotesSection.swift Recent header + NoteRow (context menu: Save / Delete)
   TabBar/FloatingTabBar.swift   AppTab, FlowID, FloatingTabBar (sliding pill), PrimaryActionButton
   Saved/SavedView.swift         Saved list + empty state
+  AllNotes/AllNotesView.swift   Step 9: "See all" — grouped list overlay
+  Search/SearchView.swift       Step 9: SearchModel + search overlay (soft-UI field, results as NoteRow)
   Detail/NoteDetailView.swift   Step 8: the open note (in-place overlay), FlightIcon, DetailNavButton,
                                 `detailSourceNoteID` environment key
   Compose/ComposeDraft.swift    ComposeStep (pickIcon=1, write, save) + @Observable ComposeDraft
@@ -397,6 +403,31 @@ Key invariants:
   bounding box of the −3° rotated card and reaches up to the icon; with an 8pt margin (even up/left/right
   only) `XCUIElement.tap()` / a VoiceOver activation on the text field opened the picker. The icon's tap
   target is its 32pt.
+- **All Notes and Search are in-place overlays too (Step 9)** — owned by `RootContainerView` like compose
+  and the detail (`showsAllNotes`, `search: SearchModel?`). Why overlays and not a tab / navigation push:
+  the tab bar has two tabs (a third would change the design), there is no `NavigationStack` anywhere, and
+  an overlay keeps row frames global so the Step 8 icon flight works from rows inside them. Layering:
+  Home/Saved (0) < compose (1) < All Notes (1.2) < Search (1.4) < detail (1.6) < FoldStage (2). Opening one
+  on top of another returns to it when closed (Search from All Notes → back to All Notes; a detail opened
+  from a result → back to the search, query intact). Everything under an overlay is `accessibilityHidden`
+  and not hit-testable. Overlay in/out = `blurFade` with `Theme.Motion.smooth` (Reduce Motion: opacity with
+  `crossFade`). `\.detailSourceNoteID` is set at the ROOT so rows in every list hide their icon while the
+  detail's flying icon stands in. `DetailSession.source` (home / saved / all / search) decides whether closing
+  flies back to a row (is the row still listed?) or cross-fades.
+- **Search rules:** words split on whitespace, EVERY word must match the text (title + body) or a tag
+  (leading "#" ignored), case- and diacritic-insensitive (`String.range(of:options:)`); empty query = the
+  last 5 notes ("Recent"); results newest first; matches emphasised in the row (bold `lavenderInk`; a matched
+  tag shows as "· #tag" and is added to the VoiceOver label). Saved's search uses `SearchScope.saved`.
+  Focus on open is `.task { isFocused = true }` (no delay); results are computed in `body` from the query —
+  no state written during layout; keyboard via `keyboardOverlapPadding()`. VoiceOver: field "Search notes /
+  Search saved notes" + hint, "Clear search", "Close search", an announcement "N notes found" / "No notes
+  match" when the count changes. DEBUG `-searchCycles N` is the in-app stall harness (see Stall tools).
+- **The first text-field focus in a process stalls the main thread ≈0.5–1 s in a Debug simulator build**
+  (Step 9 finding, sampled): inside `becomeFirstResponder` UIKit loads its AutoFill and Dictation
+  frameworks (`UIKBAutofillController`, `UIDictationGlowEffect` → dlopen). Present for ANY text field (it is
+  the "cold first-keyboard stall" noted in 6B); it ends before `keyboardWillShow`. Search makes it more
+  visible (focus is requested at open, during the overlay's blur-fade). Not fixed — a hidden pre-focus
+  at launch would flash the keyboard; check on a real device / Release build.
 - **Backgrounding mid-save fast-forwards** (`finishSaveNow()` on
   `scenePhase == .background`): the task is cancelled, the note is added once
   if it hadn't landed, and everything is put in its end state without
@@ -675,7 +706,10 @@ corrupt-file handling, tolerant decoding, test launch args.
 **Step 8 — Note detail / edit.** DONE: `NoteDetailView` (open from a row, edit text / icon / tag in place,
 Save heart, Delete with confirmation, Reduce Motion cross-fade, VoiceOver), `NotesStore.update`.
 
-**Next:** real-iPhone testing (the human). **Check main-thread stalls on a real device and in a
+**Step 9 — See all and Search.** DONE: All Notes (grouped, context menu, detail on top), Search (soft-UI
+field, text + tag, saved scope, emphasis, empty/no-result states).
+
+**Next:** real-iPhone testing of Step 9 (the human). **Check main-thread stalls on a real device and in a
 Release build** — every stall number in this file is a Debug build on a loaded simulator host. Open: Dynamic Type (fixed fonts),
 the ≈650 ms stall on the very first keyboard after a fresh install.
 
@@ -798,6 +832,7 @@ Launch arguments (DEBUG only):
   runs tab switch → picker → write → save with it.
 - `-watchdog` — main-thread stall watchdog for the whole run (all UI tests).
 - `-keyboardCycles N` — keyboard stress harness (see Stall tools).
+- `-searchCycles N` — search keyboard / query stress harness (see Stall tools).
 
 ---
 
@@ -887,10 +922,12 @@ with simple fades.
 - [x] Step 6B — Robustness: main-thread hang fixed, iOS 17.5 check, SE scroll vs tilt, Reduce Motion, VoiceOver
 - [x] Step 7 — Notes persist between launches (JSON file, debounced writes, flush, corrupt handling)
 - [x] Step 8 — Note detail and edit screen (open from the row, edit in place, heart, delete)
+- [x] Step 9 — See all (All Notes) and Search
 - [x] Real-iPhone test (human, iPhone 15, Debug build, after Step 8): all flows fine — compose/keyboard, save fold, persistence, note detail, Reduce Motion. Still open: open: Dynamic Type (fixed fonts — no text scales, a design decision), first-keyboard cold stall; stalls on a real device / Release build; VoiceOver may read each Recent row twice (see log)
 
 Log:
 - (add one line per session: date, what changed, what's still off vs the reference)
+- 2026-10-01 — Step 9: See all + Search. Both are in-place overlays (see Architecture for why): `AllNotesView` (back disc + ScreenHeader "All notes" + Today / Yesterday / This week / Earlier via `NoteGroup`, `NoteRow` + its existing context menu, tap → detail on top) and `SearchView` (soft-UI field with `SoftSurface`, keyboard up on open, live results as `NoteRow` with matches emphasised, empty query = last 5, "No notes match “…”" empty state, Saved scope searches saved notes only, VoiceOver labels + result-count announcement). Shared pieces extracted: `CircleNavButton`, `EmptyStateView` (Saved uses it, same look). `NoteSearch`: every word must match text or tag, case/diacritic-insensitive; `NoteGroup`: calendar-week "This week". Tests: 13 unit (grouping boundaries, matching, ranges, tags, scope) + 12 UI (grouped list computed independently from calendar days, context menu, detail from All Notes, edit → relaunch, empty state; search by text / diacritic / tag / no results, saved-only, open result → edit → relaunch, from All Notes, Reduce Motion, accessibility, 8 keyboard cycles, in-app harness). Stalls: `-searchCycles` in isolation, 10 runs × 20 cycles = 0 stalls over 500 ms (worst ping 51–122 ms) — but ONE full-suite run had 2 steady-state stalls (555, 615 ms; passed on the retry; not attributed — no marks captured in that run); the only stall is the first-ever text focus in a process (UIKit dlopen inside `becomeFirstResponder`, 560–990 ms Debug sim) — sampled and timestamped, not fixed. Video (60 fps): detail flights from an All Notes row and from a search result are ONE object (search: icon at (42.9,193.9) → (104.3,357.4), present every frame, mass 1137 → 668, no jump). Rough: see report.
 - 2026-10-01 — Real-iPhone test (iPhone 15, Debug): the owner tested the Step 6B–8 checklist by hand and reported everything fine. Not separately reported / still open: Dynamic Type (fixed fonts), Release-build stall check, VoiceOver double-read of Recent rows (not confirmed either way).
 - 2026-10-01 — Step 8: note detail. `NoteDetailView` overlay (see Architecture): card + icon grow from the tapped row (measured frames, one travelling icon), text / icon (IconPickerStep) / tag edit in place → `NotesStore.update` (debounced, no-op if unchanged), heart toggle (switch), delete with confirmation (fade-out then list closes the gap), empty text restores the pre-edit text. Reduce Motion = 0.25 s cross-fade. VoiceOver: field "Note text" + hint, heart switch "Saved" On/Off, delete hint, focus on the title after opening. `ComposeDraft(editing:)`, `NoteCardContent.onIconTap` (additive; compose, save timeline and FoldTimeline untouched). Video (60 fps): the icon travels as ONE object — starts on the row icon, no gap, no double, ≈0.48 s open; close lands on the row slot. Found by the tests: an 8pt hit margin on the card icon made the text field's activation open the picker (removed); the empty-text restore was overwritten by the cap logic's one-tick clean-up write and restored the last intermediate ("B") instead of the original. Tests: 3 unit + 12 UI (open/close, edit text → relaunch, empty restores, 48 cap, icon → relaunch, tag → relaunch, heart (+ from Saved), delete confirm, cancel, Reduce Motion flow, accessibility, video). Rough: see report.
 - 2026-10-01 — Step 7: persistence. `NotePersistence.swift` (protocol + file + in-memory + versioned codec), tolerant `Note`/`NoteIcon` decoding, `NotesStore(persistence:)` (load/seed once, 300 ms debounce, background write, `flush()` on scenePhase ≠ active after `finishSaveNow()`), store created once in the App. Corrupt file → `notes.corrupt-<stamp>.json`, empty, never re-seeded; partial decode keeps `notes.partial-<stamp>.json`. Launch args `-resetStore`/`-inMemoryStore`/`-emptyStore`/`-persistDemo`; demo flows in-memory. Copy: Recent empty text for zero notes; folder label "1 note". Tests: 18 unit (round trip, envelope/ISO 8601, bad symbol/tone/corrupt note, corrupt file, never re-seeds, debounce collapse, flush, exactly-once, failed write retry) + 6 UI (save → kill → relaunch, saved toggle → home → kill, delete, empty store, demo flows leave the file alone, first note into an empty store). `testDemoSaveLaunchArgument` flaked 2/10 on the pre-Step-7 commit too: it tapped Next while auto-focus was moving it; now waits for the keyboard (14/14). Full suite: 0 retries after that fix. No animation, timing or visual change (only the empty-Recent copy and the folder's "1 note" label). Not verified: a real device (file protection, kill during a write), VoiceOver — the tree shows each Recent row as a Button wrapping a same-framed Button (moving the identifier / modifiers did not change it; likely the context-menu wrapper), so VoiceOver may read rows twice.

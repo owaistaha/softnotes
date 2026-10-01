@@ -64,7 +64,13 @@ struct SearchView: View {
             }
             .keyboardOverlapPadding()
         }
-        .task { isFocused = true }                         // keyboard up on open
+        .task {
+            #if DEBUG
+            MainThreadWatchdog.mark("search focus requested")
+            #endif
+            isFocused = true                               // keyboard up on open
+        }
+        .modifier(DebugSearchFocusHook(isFocused: $isFocused))
         // VoiceOver: say how many notes match (only when that changes).
         .onChange(of: announcement(for: results)) { _, text in
             guard let text else { return }
@@ -168,4 +174,31 @@ struct SearchView: View {
 #Preview {
     SearchView(model: SearchModel(scope: .all), onClose: {}, onSelectNote: { _, _ in })
         .environment(NotesStore())
+}
+
+/// DEBUG: the `-searchCycles` harness focuses / unfocuses the field through
+/// `Notification.Name.debugSearchFocus` (object: Bool). No-op in release.
+private struct DebugSearchFocusHook: ViewModifier {
+    var isFocused: FocusState<Bool>.Binding
+
+    func body(content: Content) -> some View {
+        #if DEBUG
+        content
+            .onReceive(NotificationCenter.default.publisher(for: .debugSearchFocus)) { note in
+                isFocused.wrappedValue = (note.object as? Bool) ?? false
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+                MainThreadWatchdog.mark("keyboardWillShow")
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                MainThreadWatchdog.mark("keyboardWillHide")
+            }
+        #else
+        content
+        #endif
+    }
+}
+
+extension Notification.Name {
+    static let debugSearchFocus = Notification.Name("softnotes.debugSearchFocus")
 }

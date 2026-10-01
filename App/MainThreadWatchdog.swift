@@ -49,6 +49,12 @@ final class MainThreadWatchdog: @unchecked Sendable {
         return DispatchTime.now().uptimeNanoseconds - UInt64(max(0, ago) * 1e9)
     }()
 
+    /// A timestamped marker in the same log (lines up app events with stalls).
+    static func mark(_ name: String) {
+        let t = clock()
+        Logger(subsystem: "com.owaistaha.softnotes", category: "watchdog").error("MARK \(name) t=\(t) ms")
+    }
+
     func start(thresholdMs: Int = 500) {
         lock.withLock {
             threshold = UInt64(thresholdMs) * 1_000_000
@@ -104,7 +110,7 @@ final class MainThreadWatchdog: @unchecked Sendable {
                 return false
             }
             if stalled {
-                log.error("main thread stalled \(ms) ms")
+                log.error("main thread stalled \(ms) ms, ended at t=\(MainThreadWatchdog.clock()) ms")
                 print("WATCHDOG: main thread stalled \(ms) ms, ended at t=\(MainThreadWatchdog.clock()) ms")
             }
         }

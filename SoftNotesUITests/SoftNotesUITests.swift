@@ -1168,6 +1168,25 @@ final class SoftNotesUITests: XCTestCase {
         // (The "N notes found" announcement and the field hint can't be read from XCUITest: code-verified.)
     }
 
+    /// The in-app harness (`-searchCycles`): 20 cycles of query change / keyboard down / up / clear
+    /// with the watchdog, no XCUITest interaction meanwhile — zero stalls over 500 ms.
+    func testSearchCyclesNoStalls() {
+        relaunch(["-searchCycles", "20"])
+        let report = app.descendants(matching: .any)["keyboardCycleReport"]
+        let deadline = Date().addingTimeInterval(150)
+        while !report.exists && Date() < deadline { Thread.sleep(forTimeInterval: 0.5) }
+        XCTAssertTrue(report.exists, "harness never finished")
+        let summary = report.label
+        let attachment = XCTAttachment(string: summary)
+        attachment.name = "search_cycles_report"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        print("SEARCH CYCLES (under XCUITest): \(summary)")
+        // The 20 cycles: no stall over 500 ms. (The first open is reported after the "|": the
+        // first-ever focus is UIKit loading frameworks inside becomeFirstResponder.)
+        XCTAssertTrue(summary.hasPrefix("cycles=20 stalls=0 "), "main-thread stalls: \(summary)")
+    }
+
     /// Keyboard stress for `scripts/stall-stress.sh`: open / dismiss / re-focus / type, repeatedly.
     func testSearchKeyboardCycles() {
         openSearch()

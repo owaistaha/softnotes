@@ -221,6 +221,7 @@ struct RootContainerView: View {
         .sensoryFeedback(.success, trigger: store.count) { old, new in new > old }
         .task { await runDemoFoldIfRequested() }
         .task { await runKeyboardCyclesIfRequested() }
+        .task { await runSearchCyclesIfRequested() }
         #if DEBUG
         .task {
             // `-watchdog`: log main-thread stalls > 500 ms for the whole run
@@ -610,6 +611,46 @@ extension RootContainerView {
         }
         let report = "cycles=\(cycles) \(watchdog.report)"
         print("KEYBOARD CYCLES DONE: \(report)")
+        keyboardCycleReport = report
+        #endif
+    }
+
+    /// `-searchCycles N` (Step 9): opens Search and, N times, types a query,
+    /// drops the keyboard, brings it back and clears the query — all from
+    /// inside the app (no XCUITest queries), with the main-thread watchdog
+    /// running. Publishes the summary as the `keyboardCycleReport` element.
+    private func runSearchCyclesIfRequested() async {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-searchCycles"), i + 1 < args.count,
+              let cycles = Int(args[i + 1]) else { return }
+        let watchdog = MainThreadWatchdog.shared
+        watchdog.start()
+        try? await Task.sleep(for: .milliseconds(600))
+        print("HARNESS t=\(MainThreadWatchdog.clock()) ms: open search")
+        openSearch(.all)
+        try? await Task.sleep(for: .milliseconds(2500))             // first keyboard settles
+        // The very first text-field focus in a process makes UIKit load its AutoFill
+        // and Dictation frameworks inside becomeFirstResponder (sampled: ≈0.5–1 s in a
+        // Debug simulator build). Report it separately; the cycles below are the steady state.
+        let firstOpen = watchdog.report
+        print("SEARCH FIRST OPEN: \(firstOpen)")
+        watchdog.reset()
+        for cycle in 1...cycles {
+            let before = watchdog.report.stalls.count
+            search?.query = cycle % 2 == 0 ? "cher" : "boo"          // results update (emphasis, animation)
+            try? await Task.sleep(for: .milliseconds(500))
+            NotificationCenter.default.post(name: .debugSearchFocus, object: false)
+            try? await Task.sleep(for: .milliseconds(1000))
+            NotificationCenter.default.post(name: .debugSearchFocus, object: true)
+            try? await Task.sleep(for: .milliseconds(1200))
+            search?.query = ""
+            try? await Task.sleep(for: .milliseconds(400))
+            let r = watchdog.report
+            print("SEARCH CYCLE \(cycle)/\(cycles): stalls +\(r.stalls.count - before), max so far \(r.maxLatency) ms")
+        }
+        let report = "cycles=\(cycles) \(watchdog.report) | first open: \(firstOpen)"
+        print("SEARCH CYCLES DONE: \(report)")
         keyboardCycleReport = report
         #endif
     }

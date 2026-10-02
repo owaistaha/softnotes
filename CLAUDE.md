@@ -151,7 +151,7 @@ App/
                                 DEBUG `-demoFold`
 DesignSystem/
   Theme.swift                   ALL tokens: Palette, Radius, Metrics, Motion springs,
-                                PastelTone (7 tones: base + light), Font.soft*, Color(hex:),
+                                PastelTone (7 tones: base + light), SoftType + .softFont(_:) (Dynamic Type), Color(hex:),
                                 Comparable.clamped(to:)
   SoftSurface.swift             Elevation (.raised/.floating/.folder multi-layer shadows),
                                 SoftSurface<Shape> view, PressableButtonStyle (.pressable),
@@ -375,9 +375,6 @@ Key invariants:
   picker cells use spoken names (`NoteIcon.accessibilityName`); the note
   field is "Note" with a hint; filing posts one announcement "Note saved.
   N notes." (`announceFiled()` — landing, Reduce Motion, fast-forward).
-  App text does NOT follow Dynamic Type: every font is a fixed
-  `.system(size:)` token (checked at default / XXL / AX5 — nothing clips
-  because nothing grows). Scaling is an open design decision.
 - **Note detail (Step 8):** tapping a row (Home Recent, Saved) opens `NoteDetailView`, an in-place overlay
   owned by `RootContainerView` (`detail: DetailSession?` — id, the row's global frame, the tab, and a
   `ComposeDraft(editing:)` edit buffer). No sheet. It reuses `NoteCardView`/`NoteCardContent` (new
@@ -428,6 +425,39 @@ Key invariants:
   the "cold first-keyboard stall" noted in 6B); it ends before `keyboardWillShow`. Search makes it more
   visible (focus is requested at open, during the overlay's blur-fade). Not fixed — a hidden pre-focus
   at launch would flash the keyboard; check on a real device / Release build.
+- **Dynamic Type (Step 11):** every text style is a `SoftType` (Theme.swift): its size at the default text
+  size (Large — what the reference was measured at), weight, and the system text style it follows. Views use
+  `.softFont(_:)`, which scales the size with `UIFontMetrics` for the environment's `dynamicTypeSize` —
+  at Large it is exactly the old fixed size (`scaledSize` returns `size`), so the default is unchanged
+  (verified: Home, See all, detail, search, picker and write screenshots diffed at point resolution against
+  the pre-change build — only the run-to-run noise differs: idle chip float, card clock, caret blink).
+  Text-wrapping metrics scale with `@ScaledMetric`: row min height 58 and padding 6, the search field
+  height 46, the tag chip height 20. Row titles wrap to 2 lines at accessibility sizes.
+  **Capped** (`.dynamicTypeSize(...Theme.Metrics.geometricTypeCap)` = xxxLarge) because they are measured /
+  animated geometry: the folder card (count bubble, Notes toggle — those labels also shrink to fit their
+  fixed shapes), the tab bar + FAB, the save's flying card (FoldStage), and the write card (so its hand-off
+  to the save's card shows the same text). The card's header and tag chip are capped lower, at xLarge
+  (`NoteCardContent.chromeCap`): they sit in the fixed 236×258 card. Not capped: headers, row titles, search,
+  picker / write titles, nav titles, the detail card's note text.
+  **Note text in the fixed card** (`NoteTextFit` / `NoteTextStyle`): the largest size ≤ the scaled size at
+  which a typical 48-character note (`typicalSample`) fits the text area (150pt tall, 198pt wide — the
+  vertical TextField's text container has 5pt line padding each side); wider text (all capitals) shrinks
+  further, never below 24pt (where the cap is known to fit). The size is constant while typing because a
+  FOCUSED vertical TextField ignores font changes (measured: re-identifying the field to force it dropped
+  focus); text wider than typical scrolls while typing and fits once the field is left. The ruled lines are
+  only drawn at the default size or smaller (larger text doesn't sit on them).
+  At accessibility sizes: the detail nav drops its hint line (it ran into the buttons; VoiceOver has it as the
+  field's hint) and keeps the title clear of the buttons; the write title keeps its natural height
+  (`fixedSize(vertical:)`) and wraps / rides up off the top instead of truncating ("What's on yo…").
+  DEBUG `-dynamicTypeSize <name>` (e.g. `xxLarge`, `accessibility3`) sets the size for screenshot tests
+  (`testDynamicTypeScreens{Default,XXL,AX3,AX5}`, `testNoteTextFitsAtAccessibilitySizes`).
+- **Tapping a tilted text field in UI tests:** the card is rotated −3°, so the field's frame is the bounding box
+  of a tilted rectangle; XCUITest's element `tap()` aims near the box's top-left corner — outside the field,
+  in the gap under the card icon (which gets the tap). Tests tap the field's CENTRE. Real touches on the text
+  were probed at the default size and AX5 and focus it correctly; touches in the gap ≈10pt under the 32pt icon
+  go to the icon (SwiftUI's hit tolerance for small targets — a `Button` and a plain tap gesture behave alike).
+  This also corrects the Step 8 note: removing the icon's hit margin didn't fix a VoiceOver problem — the
+  text field's activation point is the box corner, and with the margin that corner fell on the icon.
 - **Backgrounding mid-save fast-forwards** (`finishSaveNow()` on
   `scenePhase == .background`): the task is cancelled, the note is added once
   if it hadn't landed, and everything is put in its end state without
@@ -709,9 +739,12 @@ Save heart, Delete with confirmation, Reduce Motion cross-fade, VoiceOver), `Not
 **Step 9 — See all and Search.** DONE: All Notes (grouped, context menu, detail on top), Search (soft-UI
 field, text + tag, saved scope, emphasis, empty/no-result states).
 
-**Next:** real-iPhone testing of Step 9 (the human). **Check main-thread stalls on a real device and in a
-Release build** — every stall number in this file is a Debug build on a loaded simulator host. Open: Dynamic Type (fixed fonts),
-the ≈650 ms stall on the very first keyboard after a fresh install.
+**Step 11 — Dynamic Type.** DONE: SoftType / softFont scaling, @ScaledMetric for text-wrapping metrics,
+caps on measured geometry, note-text fit rule, large-size fixes. (There was no Step 10.)
+
+**Next:** real-iPhone testing of Steps 9 and 11 (the human). **Check main-thread stalls on a real device and in a
+Release build** — every stall number in this file is a Debug build on a loaded simulator host. Open:
+the first text-field focus of a process stalls ≈0.5–1 s in the Debug simulator (UIKit framework loading).
 
 **Later / explicitly out of scope until asked:** note detail/edit screen,
 search, "See all" screen, persistence (SwiftData or a JSON file), dark mode,
@@ -794,7 +827,8 @@ rather than retrying.
 thread watchdog → os_log). `scripts/stall-stress.sh ITER label tests…`
 repeats tests with `-test-iterations`, streams the watchdog log and runs
 `sample` on the app when a stall passes 2 s (hang_*.txt in
-`$TMPDIR/softnotes-stress`). `-keyboardCycles N` (DEBUG) makes the app
+`$TMPDIR/softnotes-stress`). `-keyboardCycles N` (DEBUG; since Step 11 its summary lists the cycles first and the first open after "|",
+like `-searchCycles`) makes the app
 focus/dismiss the write card N times by itself and publish a summary
 (`keyboardCycleReport`), plus a probe log of SwiftUI's keyboard edge vs
 UIKit's; `testKeyboardCyclesNoStalls` runs 20 cycles under XCUITest and
@@ -839,7 +873,8 @@ Launch arguments (DEBUG only):
 ## Hard rules
 
 - **Use the design system.** Colours from `Theme.Palette` / `PastelTone`,
-  springs from `Theme.Motion`, fonts from `Font.soft*`, cards via
+  springs from `Theme.Motion`, fonts from `.softFont(SoftType)` (never a fixed
+  `.font(.system(size:))` for text — it wouldn't scale with Dynamic Type), cards via
   `SoftSurface`, buttons via `.pressable`. No raw hex, no inline one-off
   springs in feature views.
 - **Never stack `.shadow()` modifiers on a content view for card depth** —
@@ -923,10 +958,12 @@ with simple fades.
 - [x] Step 7 — Notes persist between launches (JSON file, debounced writes, flush, corrupt handling)
 - [x] Step 8 — Note detail and edit screen (open from the row, edit in place, heart, delete)
 - [x] Step 9 — See all (All Notes) and Search
-- [x] Real-iPhone test (human, iPhone 15, Debug build, after Step 8): all flows fine — compose/keyboard, save fold, persistence, note detail, Reduce Motion. Still open: open: Dynamic Type (fixed fonts — no text scales, a design decision), first-keyboard cold stall; stalls on a real device / Release build; VoiceOver may read each Recent row twice (see log)
+- [x] Step 11 — Dynamic Type (scaling text, caps on measured geometry, default size unchanged)
+- [x] Real-iPhone test (human, iPhone 15, Debug build, after Step 8): all flows fine — compose/keyboard, save fold, persistence, note detail, Reduce Motion. Still open: first-keyboard cold stall; stalls on a real device / Release build; VoiceOver may read each Recent row twice (see log)
 
 Log:
 - (add one line per session: date, what changed, what's still off vs the reference)
+- 2026-10-02 — Step 11: Dynamic Type. `SoftType` + `.softFont(_:)` (UIFontMetrics on the environment's size; exact old size at Large) replace every fixed text size; `@ScaledMetric` for row height/padding, search field height, tag chip height; row titles wrap to 2 lines at AX sizes. Capped at xxxLarge: folder card, tab bar + FAB, the save's card, the write card; card header + tag at xLarge. Note text: largest size at which a typical 48-char note fits the fixed card, constant while typing (a focused vertical TextField ignores font changes — measured; forcing it with `.id` dropped focus), shrinking further for wider text, never < 24pt. Fixed at large sizes: detail nav ran into its buttons (hint line dropped at AX sizes, title kept clear), tag capsule ballooned (its scaled height was outside the cap), ruled lines cut through large text (drawn only ≤ default), write title truncated "What's on yo…" with the keyboard up (now `fixedSize(vertical:)`; a `minimumScaleFactor` attempt shrank the title at the DEFAULT size — caught by the regression diff, reverted). Regression guard: default-size screenshots of Home / See all / detail / search / picker / write diffed at point resolution — pre-change vs post-change back to back: identical except the run-to-run noise (idle chip float, card clock, caret). Found: XCUITest taps a tilted (−3°) text field at its bounding box's corner — tests now tap the centre; real touches on the text are fine. Stalls: `-searchCycles` 3 × 20 = 0; `-keyboardCycles` now reports its first open separately — 4 runs × 20 cycles = 0, the only stalls (531–646 ms) end ≈0.6 s after "write auto-focus requested" (first focus of the process); one earlier run had a mid-cycle 756 ms stall (not reproduced, unexplained); the pre-Step-11 commit also stalls 1 in 3 runs. Full suite: 92 tests (56 UI + 36 unit) passed first attempt, 0 retries.
 - 2026-10-01 — Step 9: See all + Search. Both are in-place overlays (see Architecture for why): `AllNotesView` (back disc + ScreenHeader "All notes" + Today / Yesterday / This week / Earlier via `NoteGroup`, `NoteRow` + its existing context menu, tap → detail on top) and `SearchView` (soft-UI field with `SoftSurface`, keyboard up on open, live results as `NoteRow` with matches emphasised, empty query = last 5, "No notes match “…”" empty state, Saved scope searches saved notes only, VoiceOver labels + result-count announcement). Shared pieces extracted: `CircleNavButton`, `EmptyStateView` (Saved uses it, same look). `NoteSearch`: every word must match text or tag, case/diacritic-insensitive; `NoteGroup`: calendar-week "This week". Tests: 13 unit (grouping boundaries, matching, ranges, tags, scope) + 12 UI (grouped list computed independently from calendar days, context menu, detail from All Notes, edit → relaunch, empty state; search by text / diacritic / tag / no results, saved-only, open result → edit → relaunch, from All Notes, Reduce Motion, accessibility, 8 keyboard cycles, in-app harness). Stalls: `-searchCycles` in isolation, 10 runs × 20 cycles = 0 stalls over 500 ms (worst ping 51–122 ms) — but ONE full-suite run had 2 steady-state stalls (555, 615 ms; passed on the retry; not attributed — no marks captured in that run); the only stall is the first-ever text focus in a process (UIKit dlopen inside `becomeFirstResponder`, 560–990 ms Debug sim) — sampled and timestamped, not fixed. Video (60 fps): detail flights from an All Notes row and from a search result are ONE object (search: icon at (42.9,193.9) → (104.3,357.4), present every frame, mass 1137 → 668, no jump). Rough: see report.
 - 2026-10-01 — Real-iPhone test (iPhone 15, Debug): the owner tested the Step 6B–8 checklist by hand and reported everything fine. Not separately reported / still open: Dynamic Type (fixed fonts), Release-build stall check, VoiceOver double-read of Recent rows (not confirmed either way).
 - 2026-10-01 — Step 8: note detail. `NoteDetailView` overlay (see Architecture): card + icon grow from the tapped row (measured frames, one travelling icon), text / icon (IconPickerStep) / tag edit in place → `NotesStore.update` (debounced, no-op if unchanged), heart toggle (switch), delete with confirmation (fade-out then list closes the gap), empty text restores the pre-edit text. Reduce Motion = 0.25 s cross-fade. VoiceOver: field "Note text" + hint, heart switch "Saved" On/Off, delete hint, focus on the title after opening. `ComposeDraft(editing:)`, `NoteCardContent.onIconTap` (additive; compose, save timeline and FoldTimeline untouched). Video (60 fps): the icon travels as ONE object — starts on the row icon, no gap, no double, ≈0.48 s open; close lands on the row slot. Found by the tests: an 8pt hit margin on the card icon made the text field's activation open the picker (removed); the empty-text restore was overwritten by the cap logic's one-tick clean-up write and restored the last intermediate ("B") instead of the original. Tests: 3 unit + 12 UI (open/close, edit text → relaunch, empty restores, 48 cap, icon → relaunch, tag → relaunch, heart (+ from Saved), delete confirm, cancel, Reduce Motion flow, accessibility, video). Rough: see report.
